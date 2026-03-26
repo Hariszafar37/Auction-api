@@ -1,0 +1,73 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
+
+class RolePermissionSeeder extends Seeder
+{
+    public function run(): void
+    {
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
+        // --- Permissions ---
+        $permissions = [
+            // Auction
+            'auctions.view',
+            'auctions.bid',
+            'auctions.create',
+            'auctions.manage',
+
+            // Inventory
+            'inventory.view',
+            'inventory.create',
+            'inventory.manage',
+
+            // Users
+            'users.view',
+            'users.manage',
+
+            // Dealers
+            'dealers.view',
+            'dealers.approve',
+
+            // Payments
+            'payments.view',
+            'payments.manage',
+
+            // Reports / CMS
+            'reports.view',
+            'cms.manage',
+        ];
+
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'sanctum']);
+        }
+
+        // --- Roles ---
+        $buyer = Role::firstOrCreate(['name' => 'buyer', 'guard_name' => 'sanctum']);
+        $dealer = Role::firstOrCreate(['name' => 'dealer', 'guard_name' => 'sanctum']);
+        $admin  = Role::firstOrCreate(['name' => 'admin',  'guard_name' => 'sanctum']);
+
+        $buyer->syncPermissions([
+            'auctions.view',
+            'auctions.bid',
+            'inventory.view',
+            'payments.view',
+        ]);
+
+        $dealer->syncPermissions([
+            'auctions.view',
+            'auctions.bid',
+            'auctions.create',
+            'inventory.view',
+            'inventory.create',
+            'payments.view',
+        ]);
+
+        $admin->syncPermissions($permissions);
+    }
+}

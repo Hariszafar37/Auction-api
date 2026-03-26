@@ -1,0 +1,154 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
+
+class User extends Authenticatable implements MustVerifyEmail
+{
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
+
+    protected string $guard_name = 'sanctum';
+
+    protected $fillable = [
+        'name',
+        'first_name',
+        'last_name',
+        'email',
+        'password',
+        'phone',
+        'primary_phone',
+        'secondary_phone',
+        'consent_marketing',
+        'agreed_terms_at',
+        'password_set_at',
+        'status',
+        'account_type',
+        'activation_completed_at',
+        'stripe_customer_id',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at'       => 'datetime',
+            'password'                => 'hashed',
+            'agreed_terms_at'         => 'datetime',
+            'password_set_at'         => 'datetime',
+            'activation_completed_at' => 'datetime',
+            'consent_marketing'       => 'boolean',
+        ];
+    }
+
+    // ── Relationships ────────────────────────────────────────────
+
+    public function buyerProfile(): HasOne
+    {
+        return $this->hasOne(BuyerProfile::class);
+    }
+
+    public function dealerProfile(): HasOne
+    {
+        return $this->hasOne(DealerProfile::class);
+    }
+
+    public function accountInformation(): HasOne
+    {
+        return $this->hasOne(UserAccountInformation::class);
+    }
+
+    public function dealerInformation(): HasOne
+    {
+        return $this->hasOne(UserDealerInformation::class);
+    }
+
+    public function billingInformation(): HasOne
+    {
+        return $this->hasOne(UserBillingInformation::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(UserDocument::class);
+    }
+
+    // ── Auction relationships ─────────────────────────────────────
+
+    public function bids(): HasMany
+    {
+        return $this->hasMany(Bid::class);
+    }
+
+    public function proxyBids(): HasMany
+    {
+        return $this->hasMany(ProxyBid::class);
+    }
+
+    public function vehicles(): HasMany
+    {
+        return $this->hasMany(Vehicle::class, 'seller_id');
+    }
+
+    // ── Status helpers ────────────────────────────────────────────
+
+    public function isActive(): bool
+    {
+        return $this->status === 'active';
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->status === 'suspended';
+    }
+
+    public function isPendingEmailVerification(): bool
+    {
+        return $this->status === 'pending_email_verification';
+    }
+
+    public function isPendingPassword(): bool
+    {
+        return $this->status === 'pending_password';
+    }
+
+    public function isPendingActivation(): bool
+    {
+        return $this->status === 'pending_activation';
+    }
+
+    // ── Activation helpers ────────────────────────────────────────
+
+    /**
+     * Returns: 'incomplete' | 'pending_approval' | 'complete'
+     */
+    public function getActivationStatus(): string
+    {
+        if ($this->status === 'active') {
+            return 'complete';
+        }
+
+        if ($this->activation_completed_at && $this->account_type === 'dealer') {
+            return 'pending_approval';
+        }
+
+        return 'incomplete';
+    }
+
+    public function isActivationRequired(): bool
+    {
+        return $this->status !== 'active';
+    }
+}
