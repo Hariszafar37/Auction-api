@@ -14,7 +14,7 @@ class AccountTypeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'account_type' => ['required', 'in:individual,dealer'],
+            'account_type' => ['required', 'in:individual,dealer,business,government'],
         ];
     }
 }

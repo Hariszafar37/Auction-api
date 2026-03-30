@@ -79,8 +79,9 @@ Route::prefix('v1')->group(function () {
         Route::prefix('activation')->name('activation.')->group(function () {
             Route::post('/account-type',        [ActivationController::class, 'accountType'])->name('account-type');
             Route::post('/account-information', [ActivationController::class, 'accountInformation'])->name('account-information');
-            Route::post('/dealer-information',  [ActivationController::class, 'dealerInformation'])->name('dealer-information');
-            Route::post('/billing-information', [ActivationController::class, 'billingInformation'])->name('billing-information');
+            Route::post('/dealer-information',   [ActivationController::class, 'dealerInformation'])->name('dealer-information');
+            Route::post('/business-information', [ActivationController::class, 'businessInformation'])->name('business-information');
+            Route::post('/billing-information',  [ActivationController::class, 'billingInformation'])->name('billing-information');
             Route::post('/upload-documents',    [ActivationController::class, 'uploadDocuments'])->name('upload-documents');
             Route::post('/complete',            [ActivationController::class, 'complete'])->name('complete');
         });

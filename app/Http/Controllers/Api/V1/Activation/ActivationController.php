@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Activation\AccountInformationRequest;
 use App\Http\Requests\Activation\AccountTypeRequest;
 use App\Http\Requests\Activation\BillingInformationRequest;
+use App\Http\Requests\Activation\BusinessInformationRequest;
 use App\Http\Requests\Activation\DealerInformationRequest;
 use App\Http\Requests\Activation\UploadDocumentRequest;
 use App\Http\Resources\UserResource;
@@ -34,6 +35,8 @@ class ActivationController extends Controller
         if ($request->account_type === 'dealer') {
             $user->syncRoles(['dealer']);
         } else {
+            // individual, business, and government all use the buyer role baseline;
+            // business-specific permissions will be layered in a future phase
             $user->syncRoles(['buyer']);
         }
 
@@ -110,6 +113,49 @@ class ActivationController extends Controller
         return $this->success(
             new UserResource($user->fresh()->load('dealerInformation')),
             'Dealer information saved.'
+        );
+    }
+
+    /**
+     * POST /api/v1/activation/business-information
+     */
+    public function businessInformation(BusinessInformationRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->account_type !== 'business') {
+            return $this->error('This step is only required for business accounts.', 422, 'not_a_business');
+        }
+
+        if ($user->isActive()) {
+            return $this->error('Account is already fully activated.', 422, 'already_active');
+        }
+
+        $user->businessInformation()->updateOrCreate(
+            ['user_id' => $user->id],
+            $request->only([
+                'legal_business_name',
+                'dba_name',
+                'primary_contact_name',
+                'contact_title',
+                'phone',
+                'office_phone',
+                'address',
+                'suite',
+                'city',
+                'state',
+                'zip',
+                'entity_type',
+                'state_of_formation',
+            ])
+        );
+
+        // Persist account_intent on the user record
+        $user->update(['account_intent' => $request->account_intent]);
+
+        return $this->success(
+            new UserResource($user->fresh()->load('businessInformation')),
+            'Business information saved.'
         );
     }
 
@@ -215,8 +261,16 @@ class ActivationController extends Controller
             $errors[] = 'Account type has not been selected.';
         }
 
-        if (! $user->accountInformation) {
-            $errors[] = 'Account information is incomplete.';
+        // Individual and dealer require personal account information;
+        // business accounts supply business information instead
+        if ($user->account_type === 'business') {
+            if (! $user->businessInformation) {
+                $errors[] = 'Business information is incomplete.';
+            }
+        } else {
+            if (! $user->accountInformation) {
+                $errors[] = 'Account information is incomplete.';
+            }
         }
 
         if ($user->account_type === 'dealer' && ! $user->dealerInformation) {
@@ -261,6 +315,13 @@ class ActivationController extends Controller
             ]);
 
             $message = 'Activation complete. Your dealer account is pending admin approval.';
+        } elseif ($user->account_type === 'business') {
+            $user->update([
+                'activation_completed_at' => now(),
+                'status'                  => 'pending_activation', // admin must approve
+            ]);
+
+            $message = 'Activation complete. Your business account is pending admin approval.';
         } else {
             $user->update([
                 'activation_completed_at' => now(),
@@ -273,6 +334,7 @@ class ActivationController extends Controller
         $user->refresh()->load([
             'accountInformation',
             'dealerInformation',
+            'businessInformation',
             'billingInformation',
             'documents',
         ]);
