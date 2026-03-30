@@ -40,6 +40,12 @@ class ActivationController extends Controller
             // individual, business, and government all use the buyer role baseline;
             // business-specific permissions will be layered in a future phase
             $user->syncRoles(['buyer']);
+
+            // Individuals are buyers only — seller capability requires the dealer/business flow.
+            // Business accounts collect their own account_intent in a dedicated wizard step.
+            if ($request->account_type === 'individual') {
+                $user->update(['account_intent' => 'buyer']);
+            }
         }
 
         return $this->success(
