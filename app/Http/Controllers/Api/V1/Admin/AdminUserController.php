@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\RejectBusinessRequest;
 use App\Http\Requests\Admin\RejectDealerRequest;
 use App\Http\Requests\Admin\UpdateUserRoleRequest;
 use App\Http\Requests\Admin\UpdateUserStatusRequest;
@@ -49,7 +50,7 @@ class AdminUserController extends Controller
     public function show(User $user): JsonResponse
     {
         return $this->success(
-            new UserResource($user->load(['buyerProfile', 'dealerProfile']))
+            new UserResource($user->load(['buyerProfile', 'dealerProfile', 'businessProfile', 'businessInformation', 'documents']))
         );
     }
 
@@ -61,7 +62,7 @@ class AdminUserController extends Controller
         $user->update(['status' => $request->status]);
 
         return $this->success(
-            new UserResource($user->fresh(['buyerProfile', 'dealerProfile'])),
+            new UserResource($user->fresh(['buyerProfile', 'dealerProfile', 'businessProfile', 'businessInformation', 'documents'])),
             'User status updated.'
         );
     }
@@ -92,7 +93,7 @@ class AdminUserController extends Controller
         $user->syncRoles([$request->role]);
 
         return $this->success(
-            new UserResource($user->fresh(['buyerProfile', 'dealerProfile'])),
+            new UserResource($user->fresh(['buyerProfile', 'dealerProfile', 'businessProfile', 'businessInformation', 'documents'])),
             'User role updated.'
         );
     }
@@ -173,6 +174,85 @@ class AdminUserController extends Controller
         return $this->success(
             new UserResource($user->fresh('dealerProfile')),
             'Dealer rejected.'
+        );
+    }
+
+    /**
+     * GET /api/v1/admin/businesses/pending
+     */
+    public function pendingBusinesses(Request $request): JsonResponse
+    {
+        $businesses = QueryBuilder::for(User::class)
+            ->allowedSorts(['created_at', 'name'])
+            ->whereHas('businessProfile', fn ($q) => $q->where('approval_status', 'pending'))
+            ->with('businessProfile')
+            ->paginate($request->integer('per_page', 20))
+            ->appends($request->query());
+
+        return $this->success(
+            UserResource::collection($businesses),
+            meta: [
+                'current_page' => $businesses->currentPage(),
+                'last_page'    => $businesses->lastPage(),
+                'per_page'     => $businesses->perPage(),
+                'total'        => $businesses->total(),
+            ]
+        );
+    }
+
+    /**
+     * POST /api/v1/admin/businesses/{user}/approve
+     */
+    public function approveBusiness(Request $request, User $user): JsonResponse
+    {
+        $profile = $user->businessProfile;
+
+        if (! $profile) {
+            return $this->error('User does not have a business profile.', 404, 'not_found');
+        }
+
+        if ($profile->approval_status === 'approved') {
+            return $this->error('Business is already approved.', 422, 'already_approved');
+        }
+
+        $profile->update([
+            'approval_status'  => 'approved',
+            'rejection_reason' => null,
+            'reviewed_by'      => $request->user()->id,
+            'reviewed_at'      => now(),
+        ]);
+
+        $user->update(['status' => 'active']);
+
+        return $this->success(
+            new UserResource($user->fresh('businessProfile')),
+            'Business approved successfully.'
+        );
+    }
+
+    /**
+     * POST /api/v1/admin/businesses/{user}/reject
+     */
+    public function rejectBusiness(RejectBusinessRequest $request, User $user): JsonResponse
+    {
+        $profile = $user->businessProfile;
+
+        if (! $profile) {
+            return $this->error('User does not have a business profile.', 404, 'not_found');
+        }
+
+        $profile->update([
+            'approval_status'  => 'rejected',
+            'rejection_reason' => $request->reason,
+            'reviewed_by'      => $request->user()->id,
+            'reviewed_at'      => now(),
+        ]);
+
+        $user->update(['status' => 'suspended']);
+
+        return $this->success(
+            new UserResource($user->fresh('businessProfile')),
+            'Business rejected.'
         );
     }
 }

@@ -162,6 +162,13 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{user}/reject',  [AdminUserController::class, 'rejectDealer'])->name('reject')->middleware('permission:dealers.approve');
             });
 
+            // Businesses
+            Route::prefix('businesses')->name('businesses.')->group(function () {
+                Route::get('/pending',         [AdminUserController::class, 'pendingBusinesses'])->name('pending')->middleware('permission:dealers.view');
+                Route::post('/{user}/approve', [AdminUserController::class, 'approveBusiness'])->name('approve')->middleware('permission:dealers.approve');
+                Route::post('/{user}/reject',  [AdminUserController::class, 'rejectBusiness'])->name('reject')->middleware('permission:dealers.approve');
+            });
+
             // Auctions — admin CRUD + lifecycle
             Route::prefix('auctions')->name('auctions.')->group(function () {
                 Route::get('/',              [AdminAuctionController::class, 'index'])->name('index');
