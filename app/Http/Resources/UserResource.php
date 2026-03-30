@@ -25,6 +25,7 @@ class UserResource extends JsonResource
 
             // Activation
             'account_type'            => $this->account_type,
+            'account_intent'          => $this->account_intent,
             'activation_status'       => $this->getActivationStatus(),
             'activation_required'     => $this->isActivationRequired(),
             'activation_completed_at' => $this->activation_completed_at?->toIso8601String(),
@@ -54,6 +55,22 @@ class UserResource extends JsonResource
                 'dealer_country'          => $this->dealerInformation->dealer_country,
                 'dealer_city'             => $this->dealerInformation->dealer_city,
                 'dealer_zip_code'         => $this->dealerInformation->dealer_zip_code,
+            ] : null),
+
+            'business_information'    => $this->whenLoaded('businessInformation', fn () => $this->businessInformation ? [
+                'legal_business_name'  => $this->businessInformation->legal_business_name,
+                'dba_name'             => $this->businessInformation->dba_name,
+                'primary_contact_name' => $this->businessInformation->primary_contact_name,
+                'contact_title'        => $this->businessInformation->contact_title,
+                'phone'                => $this->businessInformation->phone,
+                'office_phone'         => $this->businessInformation->office_phone,
+                'address'              => $this->businessInformation->address,
+                'suite'                => $this->businessInformation->suite,
+                'city'                 => $this->businessInformation->city,
+                'state'                => $this->businessInformation->state,
+                'zip'                  => $this->businessInformation->zip,
+                'entity_type'          => $this->businessInformation->entity_type,
+                'state_of_formation'   => $this->businessInformation->state_of_formation,
             ] : null),
 
             'billing_information'     => $this->whenLoaded('billingInformation', fn () => $this->billingInformation ? [

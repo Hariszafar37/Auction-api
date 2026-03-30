@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\UserBusinessInformation;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -32,6 +33,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password_set_at',
         'status',
         'account_type',
+        'account_intent',
         'activation_completed_at',
         'stripe_customer_id',
     ];
@@ -78,6 +80,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function billingInformation(): HasOne
     {
         return $this->hasOne(UserBillingInformation::class);
+    }
+
+    public function businessInformation(): HasOne
+    {
+        return $this->hasOne(UserBusinessInformation::class);
     }
 
     public function documents(): HasMany
@@ -140,7 +147,7 @@ class User extends Authenticatable implements MustVerifyEmail
             return 'complete';
         }
 
-        if ($this->activation_completed_at && $this->account_type === 'dealer') {
+        if ($this->activation_completed_at && in_array($this->account_type, ['dealer', 'business'])) {
             return 'pending_approval';
         }
 
