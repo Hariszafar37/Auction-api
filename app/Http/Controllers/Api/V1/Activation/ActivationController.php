@@ -31,9 +31,11 @@ class ActivationController extends Controller
 
         $user->update(['account_type' => $request->account_type]);
 
-        // Sync role to match account type
+        // Sync role to match account type; auto-set account_intent for dealers
         if ($request->account_type === 'dealer') {
             $user->syncRoles(['dealer']);
+            // Dealers both buy and sell by definition — set account_intent automatically
+            $user->update(['account_intent' => 'buyer_and_seller']);
         } else {
             // individual, business, and government all use the buyer role baseline;
             // business-specific permissions will be layered in a future phase
@@ -106,6 +108,7 @@ class ActivationController extends Controller
                 'dealer_address',
                 'dealer_country',
                 'dealer_city',
+                'dealer_state',
                 'dealer_zip_code',
             ])
         );
@@ -302,10 +305,24 @@ class ActivationController extends Controller
             DealerProfile::updateOrCreate(
                 ['user_id' => $user->id],
                 [
-                    'company_name'       => $dealerInfo->company_name,
-                    'dealer_license'     => $dealerInfo->license_number,
-                    'packet_accepted_at' => now(),
-                    'approval_status'    => 'pending',
+                    // Identity
+                    'company_name'                   => $dealerInfo->company_name,
+                    'owner_name'                     => $dealerInfo->owner_name,
+                    'phone_primary'                  => $dealerInfo->phone,
+                    'primary_contact'                => $dealerInfo->primary_contact,
+                    // License (field names differ between tables)
+                    'dealer_license'                 => $dealerInfo->license_number,
+                    'dealer_license_expiration_date' => $dealerInfo->license_expiration_date,
+                    'tax_id_number'                  => $dealerInfo->tax_id_number,
+                    // Address (field names differ between tables)
+                    'dealer_address_line1'           => $dealerInfo->dealer_address,
+                    'dealer_city'                    => $dealerInfo->dealer_city,
+                    'dealer_state'                   => $dealerInfo->dealer_state,
+                    'dealer_postal_code'             => $dealerInfo->dealer_zip_code,
+                    'dealer_country'                 => $dealerInfo->dealer_country,
+                    // Approval state
+                    'packet_accepted_at'             => now(),
+                    'approval_status'                => 'pending',
                 ]
             );
 

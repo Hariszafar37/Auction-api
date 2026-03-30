@@ -24,6 +24,8 @@ class DealerInformationRequest extends FormRequest
             'dealer_address'          => ['required', 'string', 'max:500'],
             'dealer_country'          => ['required', 'string', 'size:2'],
             'dealer_city'             => ['required', 'string', 'max:100'],
+            // Nullable in DB for backward compat with existing rows; frontend treats as required.
+            'dealer_state'            => ['nullable', 'string', 'max:100'],
             'dealer_zip_code'         => ['required', 'string', 'max:20'],
         ];
     }
