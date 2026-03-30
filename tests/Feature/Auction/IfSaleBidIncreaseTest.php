@@ -11,6 +11,7 @@ use App\Models\Vehicle;
 use App\Services\Auction\AuctionLotService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Carbon;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,11 @@ function makeIfSaleLot(User $winner, array $overrides = []): AuctionLot
 // ── Service tests ─────────────────────────────────────────────────────────────
 
 test('winner can increase their if_sale bid', function () {
+    // Freeze time so timestamp assertions are deterministic regardless of suite run speed.
+    // Floor to second precision so frozen value matches what MySQL datetime stores after truncating microseconds.
+    $now = now()->startOfSecond();
+    Carbon::setTestNow($now);
+
     $winner  = User::factory()->create(['status' => 'active']);
     $lot     = makeIfSaleLot($winner, ['current_bid' => 1000]);
     $service = app(AuctionLotService::class);
@@ -75,8 +81,10 @@ test('winner can increase their if_sale bid', function () {
         ->and($updatedLot->bid_count)->toBe(2)
         ->and($updatedLot->current_winner_id)->toBe($winner->id)
         ->and($updatedLot->status)->toBe(LotStatus::IfSale) // status unchanged
-        ->and($updatedLot->seller_notified_at->greaterThanOrEqualTo(now()->subSecond()))->toBeTrue()
-        ->and($updatedLot->seller_decision_deadline->greaterThan(now()->addHours(47)))->toBeTrue();
+        ->and($updatedLot->seller_notified_at->greaterThanOrEqualTo($now))->toBeTrue()
+        ->and($updatedLot->seller_decision_deadline->greaterThan($now->copy()->addHours(47)))->toBeTrue();
+
+    Carbon::setTestNow(); // reset frozen time
 });
 
 test('winner bid creates a Bid record and deactivates the previous winning bid', function () {

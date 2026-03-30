@@ -253,9 +253,9 @@ it('admin cannot delete a vehicle that is in auction', function () {
         ->assertStatus(422);
 });
 
-// ── CSV Export ────────────────────────────────────────────────────────────
+// ── XLSX Export ───────────────────────────────────────────────────────────
 
-it('admin can export vehicle list as CSV', function () {
+it('admin can export vehicle list as XLSX', function () {
     $seller = makeSeller();
     Vehicle::factory(3)->create(['seller_id' => $seller->id]);
 
@@ -263,5 +263,8 @@ it('admin can export vehicle list as CSV', function () {
         ->get('/api/v1/admin/vehicles/export');
 
     $response->assertStatus(200)
-        ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        ->assertHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
 });
