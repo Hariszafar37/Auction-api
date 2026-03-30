@@ -14,7 +14,8 @@ class AccountTypeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'account_type' => ['required', 'in:individual,dealer,business,government'],
+            // government is reserved for admin-created accounts only — not selectable via public endpoint
+            'account_type' => ['required', 'in:individual,dealer,business'],
         ];
     }
 }
