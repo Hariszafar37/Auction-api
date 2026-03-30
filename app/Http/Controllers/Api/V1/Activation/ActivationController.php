@@ -10,6 +10,7 @@ use App\Http\Requests\Activation\BusinessInformationRequest;
 use App\Http\Requests\Activation\DealerInformationRequest;
 use App\Http\Requests\Activation\UploadDocumentRequest;
 use App\Http\Resources\UserResource;
+use App\Models\BusinessProfile;
 use App\Models\DealerProfile;
 use App\Models\UserDocument;
 use Illuminate\Http\JsonResponse;
@@ -339,6 +340,28 @@ class ActivationController extends Controller
 
             $message = 'Activation complete. Your dealer account is pending admin approval.';
         } elseif ($user->account_type === 'business') {
+            // Guard: businessInformation must exist before we can sync it
+            $bizInfo = $user->businessInformation;
+            if (! $bizInfo) {
+                return $this->error(
+                    'Activation requirements not met.',
+                    422,
+                    'activation_incomplete',
+                    ['Business information is incomplete.']
+                );
+            }
+
+            // Sync key fields into BusinessProfile for admin approval queue
+            BusinessProfile::updateOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'legal_business_name' => $bizInfo->legal_business_name,
+                    'entity_type'         => $bizInfo->entity_type,
+                    'packet_accepted_at'  => now(),
+                    'approval_status'     => 'pending',
+                ]
+            );
+
             $user->update([
                 'activation_completed_at' => now(),
                 'status'                  => 'pending_activation', // admin must approve

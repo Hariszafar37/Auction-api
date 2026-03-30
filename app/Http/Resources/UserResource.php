@@ -91,6 +91,15 @@ class UserResource extends JsonResource
                 'uploaded_at'   => $doc->created_at->toIso8601String(),
             ])),
 
+            // Business approval tracking (loaded on demand)
+            'business_profile'        => $this->whenLoaded('businessProfile', fn () => $this->businessProfile ? [
+                'legal_business_name' => $this->businessProfile->legal_business_name,
+                'entity_type'         => $this->businessProfile->entity_type,
+                'approval_status'     => $this->businessProfile->approval_status,
+                'rejection_reason'    => $this->businessProfile->rejection_reason,
+                'reviewed_at'         => $this->businessProfile->reviewed_at?->toIso8601String(),
+            ] : null),
+
             // Legacy profile data (kept for admin compatibility)
             'dealer_profile'          => $this->whenLoaded('dealerProfile', fn () => $this->dealerProfile ? [
                 'company_name'    => $this->dealerProfile->company_name,
