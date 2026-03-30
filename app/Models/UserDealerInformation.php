@@ -21,6 +21,7 @@ class UserDealerInformation extends Model
         'dealer_address',
         'dealer_country',
         'dealer_city',
+        'dealer_state',
         'dealer_zip_code',
     ];
 

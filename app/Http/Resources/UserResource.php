@@ -54,6 +54,7 @@ class UserResource extends JsonResource
                 'dealer_address'          => $this->dealerInformation->dealer_address,
                 'dealer_country'          => $this->dealerInformation->dealer_country,
                 'dealer_city'             => $this->dealerInformation->dealer_city,
+                'dealer_state'            => $this->dealerInformation->dealer_state,
                 'dealer_zip_code'         => $this->dealerInformation->dealer_zip_code,
             ] : null),
 
