@@ -100,6 +100,14 @@ class UserResource extends JsonResource
                 'reviewed_at'         => $this->businessProfile->reviewed_at?->toIso8601String(),
             ] : null),
 
+            // Individual seller approval tracking (loaded on demand)
+            'seller_profile'          => $this->whenLoaded('sellerProfile', fn () => $this->sellerProfile ? [
+                'approval_status'   => $this->sellerProfile->approval_status,
+                'rejection_reason'  => $this->sellerProfile->rejection_reason,
+                'reviewed_at'       => $this->sellerProfile->reviewed_at?->toIso8601String(),
+                'applied_at'        => $this->sellerProfile->created_at->toIso8601String(),
+            ] : null),
+
             // Legacy profile data (kept for admin compatibility)
             'dealer_profile'          => $this->whenLoaded('dealerProfile', fn () => $this->dealerProfile ? [
                 'company_name'    => $this->dealerProfile->company_name,

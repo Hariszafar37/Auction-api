@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\RejectBusinessRequest;
 use App\Http\Requests\Admin\RejectDealerRequest;
+use App\Http\Requests\Admin\RejectSellerRequest;
 use App\Http\Requests\Admin\UpdateUserRoleRequest;
 use App\Http\Requests\Admin\UpdateUserStatusRequest;
 use App\Http\Resources\UserResource;
@@ -253,6 +254,106 @@ class AdminUserController extends Controller
         return $this->success(
             new UserResource($user->fresh('businessProfile')),
             'Business rejected.'
+        );
+    }
+
+    /**
+     * GET /api/v1/admin/sellers/pending
+     */
+    public function pendingSellers(Request $request): JsonResponse
+    {
+        $sellers = QueryBuilder::for(User::class)
+            ->allowedSorts(['created_at', 'name'])
+            ->whereHas('sellerProfile', fn ($q) => $q->where('approval_status', 'pending'))
+            ->with('sellerProfile')
+            ->paginate($request->integer('per_page', 20))
+            ->appends($request->query());
+
+        return $this->success(
+            UserResource::collection($sellers),
+            meta: [
+                'current_page' => $sellers->currentPage(),
+                'last_page'    => $sellers->lastPage(),
+                'per_page'     => $sellers->perPage(),
+                'total'        => $sellers->total(),
+            ]
+        );
+    }
+
+    /**
+     * POST /api/v1/admin/sellers/{user}/approve
+     *
+     * Approves an individual seller application.
+     * Guards: only individual account_type, must have pending seller_profile.
+     * Unlike dealer/business approval, the user is already 'active' — we only
+     * assign the seller role and update account_intent.
+     */
+    public function approveSeller(Request $request, User $user): JsonResponse
+    {
+        // Guard: only individuals can become sellers via this flow
+        if ($user->account_type !== 'individual') {
+            return $this->error(
+                'Only individual account holders can be approved as sellers via this flow.',
+                422,
+                'wrong_account_type'
+            );
+        }
+
+        $profile = $user->sellerProfile;
+
+        if (! $profile) {
+            return $this->error('User does not have a seller application.', 404, 'not_found');
+        }
+
+        if ($profile->approval_status === 'approved') {
+            return $this->error('Seller application is already approved.', 422, 'already_approved');
+        }
+
+        $profile->update([
+            'approval_status'  => 'approved',
+            'rejection_reason' => null,
+            'reviewed_by'      => $request->user()->id,
+            'reviewed_at'      => now(),
+        ]);
+
+        // Assign seller role while retaining buyer role
+        $user->assignRole('seller');
+
+        // Update account_intent to reflect selling capability
+        $user->update(['account_intent' => 'buyer_and_seller']);
+
+        return $this->success(
+            new UserResource($user->fresh('sellerProfile')),
+            'Seller approved successfully.'
+        );
+    }
+
+    /**
+     * POST /api/v1/admin/sellers/{user}/reject
+     *
+     * Rejects an individual seller application.
+     * User remains active as a buyer — only seller capability is denied.
+     */
+    public function rejectSeller(RejectSellerRequest $request, User $user): JsonResponse
+    {
+        $profile = $user->sellerProfile;
+
+        if (! $profile) {
+            return $this->error('User does not have a seller application.', 404, 'not_found');
+        }
+
+        $profile->update([
+            'approval_status'  => 'rejected',
+            'rejection_reason' => $request->reason,
+            'reviewed_by'      => $request->user()->id,
+            'reviewed_at'      => now(),
+        ]);
+
+        // User remains active as a buyer — no status change
+
+        return $this->success(
+            new UserResource($user->fresh('sellerProfile')),
+            'Seller application rejected.'
         );
     }
 }

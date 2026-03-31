@@ -34,6 +34,10 @@ class RolePermissionSeeder extends Seeder
             'dealers.view',
             'dealers.approve',
 
+            // Sellers (individual seller applications)
+            'sellers.view',
+            'sellers.approve',
+
             // Payments
             'payments.view',
             'payments.manage',
@@ -48,8 +52,9 @@ class RolePermissionSeeder extends Seeder
         }
 
         // --- Roles ---
-        $buyer = Role::firstOrCreate(['name' => 'buyer', 'guard_name' => 'sanctum']);
+        $buyer  = Role::firstOrCreate(['name' => 'buyer',  'guard_name' => 'sanctum']);
         $dealer = Role::firstOrCreate(['name' => 'dealer', 'guard_name' => 'sanctum']);
+        $seller = Role::firstOrCreate(['name' => 'seller', 'guard_name' => 'sanctum']);
         $admin  = Role::firstOrCreate(['name' => 'admin',  'guard_name' => 'sanctum']);
 
         $buyer->syncPermissions([
@@ -65,6 +70,20 @@ class RolePermissionSeeder extends Seeder
             'auctions.create',
             'inventory.view',
             'inventory.create',
+            'inventory.manage',
+            'payments.view',
+        ]);
+
+        // Seller role: approved individual sellers can list and manage vehicles.
+        // Intentionally mirrors dealer permissions — both use the same vehicle routes,
+        // now protected by permission:inventory.create instead of role:dealer.
+        $seller->syncPermissions([
+            'auctions.view',
+            'auctions.bid',
+            'auctions.create',
+            'inventory.view',
+            'inventory.create',
+            'inventory.manage',
             'payments.view',
         ]);
 
