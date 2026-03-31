@@ -1,64 +1,13 @@
 <?php
 
-use App\Enums\AuctionStatus;
 use App\Enums\LotStatus;
 use App\Events\Auction\UserWonLot;
 use App\Jobs\Auction\NotifyAuctionWinner;
-use App\Models\Auction;
 use App\Models\AuctionLot;
 use App\Models\User;
-use App\Models\Vehicle;
 use App\Services\Auction\AuctionLotService;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
-
-// ── Helpers (prefixed to avoid collisions with AuctionLotServiceTest) ─────────
-
-function makeWinAuction(): Auction
-{
-    $creator = User::factory()->create(['status' => 'active']);
-
-    return Auction::create([
-        'title'      => 'Win-Test Auction',
-        'location'   => 'Dallas, TX',
-        'starts_at'  => now()->subHour(),
-        'status'     => AuctionStatus::Live,
-        'created_by' => $creator->id,
-    ]);
-}
-
-function makeWinVehicle(): Vehicle
-{
-    $seller = User::factory()->create(['status' => 'active']);
-
-    return Vehicle::create([
-        'seller_id' => $seller->id,
-        'vin'       => strtoupper(fake()->unique()->lexify('?????????????????')),
-        'year'      => 2021,
-        'make'      => 'Honda',
-        'model'     => 'Accord',
-        'status'    => 'in_auction',
-    ]);
-}
-
-/**
- * Build a countdown lot ready for closeLot().
- */
-function makeWinLot(User $buyer, array $overrides = []): AuctionLot
-{
-    return AuctionLot::create(array_merge([
-        'auction_id'               => makeWinAuction()->id,
-        'vehicle_id'               => makeWinVehicle()->id,
-        'lot_number'               => 1,
-        'status'                   => LotStatus::Countdown,
-        'starting_bid'             => 500,
-        'reserve_price'            => 500,   // reserve met at 1 000
-        'current_bid'              => 1000,
-        'current_winner_id'        => $buyer->id,
-        'countdown_seconds'        => 30,
-        'requires_seller_approval' => false,
-    ], $overrides));
-}
 
 // ── Service-layer: broadcast tests ────────────────────────────────────────────
 
@@ -67,7 +16,7 @@ it('broadcasts UserWonLot to buyer private channel when closeLot results in a di
     Event::fake([UserWonLot::class]);
 
     $buyer = User::factory()->create(['status' => 'active']);
-    $lot   = makeWinLot($buyer);
+    $lot   = $this->createLot($buyer, ['reserve_price' => 500]);
 
     $service = new AuctionLotService();
     $result  = $service->closeLot($lot);
@@ -86,7 +35,8 @@ it('broadcasts UserWonLot when approveIfSale is called', function () {
     Event::fake([UserWonLot::class]);
 
     $buyer = User::factory()->create(['status' => 'active']);
-    $lot   = makeWinLot($buyer, [
+    $lot   = $this->createLot($buyer, [
+        'reserve_price'            => 500,
         'status'                   => LotStatus::IfSale,
         'closed_at'                => now(),
         'seller_decision_deadline' => now()->addHours(48),
@@ -108,7 +58,7 @@ it('does NOT broadcast UserWonLot when reserve is not met and lot goes to reserv
     Event::fake([UserWonLot::class]);
 
     $buyer = User::factory()->create(['status' => 'active']);
-    $lot   = makeWinLot($buyer, [
+    $lot   = $this->createLot($buyer, [
         'reserve_price'            => 5000,  // current_bid (1 000) < reserve (5 000)
         'requires_seller_approval' => false, // goes straight to reserve_not_met
     ]);
@@ -125,7 +75,8 @@ it('does NOT broadcast UserWonLot when rejectIfSale is called', function () {
     Event::fake([UserWonLot::class]);
 
     $buyer = User::factory()->create(['status' => 'active']);
-    $lot   = makeWinLot($buyer, [
+    $lot   = $this->createLot($buyer, [
+        'reserve_price'            => 500,
         'status'                   => LotStatus::IfSale,
         'closed_at'                => now(),
         'seller_decision_deadline' => now()->addHours(48),
@@ -143,7 +94,7 @@ it('UserWonLot broadcastWith returns correct payload shape', function () {
     Bus::fake();
 
     $buyer = User::factory()->create(['status' => 'active']);
-    $lot   = makeWinLot($buyer);
+    $lot   = $this->createLot($buyer, ['reserve_price' => 500]);
 
     $service = new AuctionLotService();
     $result  = $service->closeLot($lot);
@@ -173,11 +124,11 @@ it('GET /my/won returns only the authenticated user\'s sold lots', function () {
     $other = User::factory()->create(['status' => 'active']);
 
     // Buyer has one won lot
-    $buyerLot = makeWinLot($buyer);
+    $buyerLot = $this->createLot($buyer, ['reserve_price' => 500]);
     (new AuctionLotService())->closeLot($buyerLot);
 
     // Another user has a won lot — must NOT appear
-    $otherLot = makeWinLot($other);
+    $otherLot = $this->createLot($other, ['reserve_price' => 500]);
     (new AuctionLotService())->closeLot($otherLot);
 
     $response = $this->actingAs($buyer, 'sanctum')
@@ -209,7 +160,7 @@ it('GET /my/won response includes auction, vehicle, and sold_price', function ()
     Bus::fake();
 
     $buyer = User::factory()->create(['status' => 'active']);
-    $lot   = makeWinLot($buyer);
+    $lot   = $this->createLot($buyer, ['reserve_price' => 500]);
     (new AuctionLotService())->closeLot($lot);
 
     $response = $this->actingAs($buyer, 'sanctum')
@@ -235,8 +186,8 @@ it('GET /my/won is paginated', function () {
     // Create 3 won lots
     foreach (range(1, 3) as $i) {
         $lot = AuctionLot::create([
-            'auction_id'               => makeWinAuction()->id,
-            'vehicle_id'               => makeWinVehicle()->id,
+            'auction_id'               => $this->createAuction()->id,
+            'vehicle_id'               => $this->createVehicle()->id,
             'lot_number'               => $i,
             'status'                   => LotStatus::Countdown,
             'starting_bid'             => 500,
