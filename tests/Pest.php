@@ -14,3 +14,7 @@
 pest()->extend(Tests\TestCase::class)
     ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
+
+// Shared auction factory helpers — scoped to auction tests only.
+pest()->use(Tests\Helpers\CreatesAuctionData::class)
+    ->in('Feature/Auction');
