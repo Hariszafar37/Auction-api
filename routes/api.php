@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\Auction\BidController;
 use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleMediaController;
+use App\Http\Controllers\Api\V1\Seller\SellerApplicationController;
 use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
 use Illuminate\Support\Facades\Route;
@@ -126,9 +127,17 @@ Route::prefix('v1')->group(function () {
             Route::post('/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('notify');
         });
 
-        // My vehicles (dealer-only)
+        // Seller application (individual users only — validated in controller)
+        Route::prefix('my/seller-application')->name('my.seller-application.')->group(function () {
+            Route::get('/',  [SellerApplicationController::class, 'show'])->name('show');
+            Route::post('/', [SellerApplicationController::class, 'store'])->name('store');
+        });
+
+        // My vehicles — accessible to dealers (role:dealer) and approved individual sellers (role:seller).
+        // Middleware changed from role:dealer to permission:inventory.create so both roles pass.
+        // Dealers already have inventory.create — no behaviour change for them.
         // NOTE: media/reorder registered BEFORE /{media} to avoid routing conflict.
-        Route::prefix('my/vehicles')->name('my.vehicles.')->middleware('role:dealer')->group(function () {
+        Route::prefix('my/vehicles')->name('my.vehicles.')->middleware('permission:inventory.create')->group(function () {
             Route::get('/',                                  [DealerVehicleController::class, 'index'])->name('index');
             Route::post('/',                                 [DealerVehicleController::class, 'store'])->name('store');
             Route::get('/{vehicle}',                         [DealerVehicleController::class, 'show'])->name('show');
@@ -167,6 +176,13 @@ Route::prefix('v1')->group(function () {
                 Route::get('/pending',         [AdminUserController::class, 'pendingBusinesses'])->name('pending')->middleware('permission:dealers.view');
                 Route::post('/{user}/approve', [AdminUserController::class, 'approveBusiness'])->name('approve')->middleware('permission:dealers.approve');
                 Route::post('/{user}/reject',  [AdminUserController::class, 'rejectBusiness'])->name('reject')->middleware('permission:dealers.approve');
+            });
+
+            // Individual sellers
+            Route::prefix('sellers')->name('sellers.')->group(function () {
+                Route::get('/pending',         [AdminUserController::class, 'pendingSellers'])->name('pending')->middleware('permission:sellers.view');
+                Route::post('/{user}/approve', [AdminUserController::class, 'approveSeller'])->name('approve')->middleware('permission:sellers.approve');
+                Route::post('/{user}/reject',  [AdminUserController::class, 'rejectSeller'])->name('reject')->middleware('permission:sellers.approve');
             });
 
             // Auctions — admin CRUD + lifecycle
