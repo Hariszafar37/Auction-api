@@ -1,5 +1,15 @@
 <?php
 
+// IMPORTANT: We intentionally do NOT rename driver_license_number or
+// driver_license_expiration_date here. Those columns are still referenced
+// by the existing ActivationController, UserAccountInformation model, and
+// ActivationFlowTest. Renaming them would break the existing codebase.
+//
+// Instead we ADD the new generic ID columns alongside the old ones so that:
+//  1. Existing code continues to write/read driver_license_number as before.
+//  2. New code (once models/controllers are updated) can use id_number / id_expiry.
+//  3. A follow-up migration can drop the old columns after code is migrated.
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -17,9 +27,12 @@ return new class extends Migration
         }
 
         Schema::table('user_account_information', function (Blueprint $table) {
-            $table->renameColumn('driver_license_number', 'id_number');
-            $table->renameColumn('driver_license_expiration_date', 'id_expiry');
-            $table->string('id_issuing_state', 100)->nullable()->after('id_type');
+            // New generic ID columns — added alongside existing driver_license columns.
+            // id_number and id_expiry will eventually replace driver_license_number
+            // and driver_license_expiration_date once controllers/models are updated.
+            $table->string('id_number', 100)->nullable()->after('id_type');
+            $table->date('id_expiry')->nullable()->after('id_number');
+            $table->string('id_issuing_state', 100)->nullable()->after('id_expiry');
             $table->string('id_issuing_country', 2)->nullable()->default('US')->after('id_issuing_state');
         });
     }
@@ -27,9 +40,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('user_account_information', function (Blueprint $table) {
-            $table->dropColumn(['id_issuing_state', 'id_issuing_country']);
-            $table->renameColumn('id_number', 'driver_license_number');
-            $table->renameColumn('id_expiry', 'driver_license_expiration_date');
+            $table->dropColumn(['id_number', 'id_expiry', 'id_issuing_state', 'id_issuing_country']);
         });
 
         if (DB::getDriverName() === 'mysql') {
