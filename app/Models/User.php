@@ -6,6 +6,8 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\GovProfile;
+use App\Models\PowerOfAttorney;
 use App\Models\SellerProfile;
 use App\Models\UserBusinessInformation;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -23,6 +25,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $fillable = [
         'name',
         'first_name',
+        'middle_name',
         'last_name',
         'email',
         'password',
@@ -37,6 +40,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'account_intent',
         'activation_completed_at',
         'stripe_customer_id',
+        'registration_ip_address',
+        'terms_version',
+        'agree_bidder_terms',
+        'agree_ecomm_consent',
+        'agree_accuracy_confirmed',
     ];
 
     protected $hidden = [
@@ -47,12 +55,15 @@ class User extends Authenticatable implements MustVerifyEmail
     protected function casts(): array
     {
         return [
-            'email_verified_at'       => 'datetime',
-            'password'                => 'hashed',
-            'agreed_terms_at'         => 'datetime',
-            'password_set_at'         => 'datetime',
-            'activation_completed_at' => 'datetime',
-            'consent_marketing'       => 'boolean',
+            'email_verified_at'        => 'datetime',
+            'password'                 => 'hashed',
+            'agreed_terms_at'          => 'datetime',
+            'password_set_at'          => 'datetime',
+            'activation_completed_at'  => 'datetime',
+            'consent_marketing'        => 'boolean',
+            'agree_bidder_terms'       => 'boolean',
+            'agree_ecomm_consent'      => 'boolean',
+            'agree_accuracy_confirmed' => 'boolean',
         ];
     }
 
@@ -96,6 +107,16 @@ class User extends Authenticatable implements MustVerifyEmail
     public function businessInformation(): HasOne
     {
         return $this->hasOne(UserBusinessInformation::class);
+    }
+
+    public function govProfile(): HasOne
+    {
+        return $this->hasOne(GovProfile::class);
+    }
+
+    public function powerOfAttorneys(): HasMany
+    {
+        return $this->hasMany(PowerOfAttorney::class);
     }
 
     public function documents(): HasMany

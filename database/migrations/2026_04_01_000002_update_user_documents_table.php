@@ -22,9 +22,13 @@ return new class extends Migration
         }
 
         Schema::table('user_documents', function (Blueprint $table) {
-            $table->text('admin_notes')->nullable()->after('status');
-            $table->unsignedBigInteger('reviewed_by')->nullable()->after('admin_notes');
-            $table->timestamp('reviewed_at')->nullable()->after('reviewed_by');
+            if (DB::getDriverName() !== 'mysql') {
+                // SQLite (used in tests) does not support ENUM; use nullable string instead
+                $table->string('status', 30)->nullable()->default('pending_review');
+            }
+            $table->text('admin_notes')->nullable();
+            $table->unsignedBigInteger('reviewed_by')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
             $table->foreign('reviewed_by')->references('id')->on('users')->nullOnDelete();
         });
     }

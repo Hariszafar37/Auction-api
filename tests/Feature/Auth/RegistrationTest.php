@@ -14,13 +14,16 @@ it('registers a new user and returns next_step=verify_email', function () {
     Event::fake([Registered::class]);
 
     $response = $this->postJson('/api/v1/auth/register', [
-        'email'              => 'user@example.com',
-        'email_confirmation' => 'user@example.com',
-        'first_name'         => 'Jane',
-        'last_name'          => 'Doe',
-        'primary_phone'      => '555-123-4567',
-        'consent_marketing'  => true,
-        'agree_terms'        => true,
+        'email'                    => 'user@example.com',
+        'email_confirmation'       => 'user@example.com',
+        'first_name'               => 'Jane',
+        'last_name'                => 'Doe',
+        'primary_phone'            => '555-123-4567',
+        'consent_marketing'        => true,
+        'agree_terms'              => true,
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
     ]);
 
     $response->assertStatus(201)
@@ -41,12 +44,15 @@ it('registers a new user and returns next_step=verify_email', function () {
 
 it('user has no password after registration', function () {
     $this->postJson('/api/v1/auth/register', [
-        'email'              => 'nopass@example.com',
-        'email_confirmation' => 'nopass@example.com',
-        'first_name'         => 'No',
-        'last_name'          => 'Pass',
-        'primary_phone'      => '555-000-0000',
-        'agree_terms'        => true,
+        'email'                    => 'nopass@example.com',
+        'email_confirmation'       => 'nopass@example.com',
+        'first_name'               => 'No',
+        'last_name'                => 'Pass',
+        'primary_phone'            => '555-000-0000',
+        'agree_terms'              => true,
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
     ]);
 
     $user = User::where('email', 'nopass@example.com')->first();
@@ -56,12 +62,15 @@ it('user has no password after registration', function () {
 
 it('assigns the buyer role on registration', function () {
     $this->postJson('/api/v1/auth/register', [
-        'email'              => 'buyer@example.com',
-        'email_confirmation' => 'buyer@example.com',
-        'first_name'         => 'Buyer',
-        'last_name'          => 'Test',
-        'primary_phone'      => '555-111-2222',
-        'agree_terms'        => true,
+        'email'                    => 'buyer@example.com',
+        'email_confirmation'       => 'buyer@example.com',
+        'first_name'               => 'Buyer',
+        'last_name'                => 'Test',
+        'primary_phone'            => '555-111-2222',
+        'agree_terms'              => true,
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
     ]);
 
     $user = User::where('email', 'buyer@example.com')->first();

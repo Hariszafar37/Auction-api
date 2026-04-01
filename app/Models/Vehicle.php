@@ -35,12 +35,17 @@ class Vehicle extends Model implements HasMedia
         'has_title',
         'title_state',
         'status',
+        'title_received',
+        'title_received_at',
+        'title_received_by',
     ];
 
     protected $casts = [
-        'has_title' => 'boolean',
-        'mileage'   => 'integer',
-        'year'      => 'integer',
+        'has_title'         => 'boolean',
+        'title_received'    => 'boolean',
+        'title_received_at' => 'datetime',
+        'mileage'           => 'integer',
+        'year'              => 'integer',
     ];
 
     // ─── Media collections ───────────────────────────────────────────────────────

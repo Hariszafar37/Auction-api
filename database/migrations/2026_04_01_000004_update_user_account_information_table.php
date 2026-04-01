@@ -19,7 +19,22 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Add id_type ENUM via raw statement (ENUM changes require raw SQL on MySQL)
+        // Make legacy columns nullable — new code writes to id_number/id_expiry instead.
+        // Existing rows written before this migration retain their values.
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE user_account_information MODIFY COLUMN driver_license_number VARCHAR(100) NULL");
+            DB::statement("ALTER TABLE user_account_information MODIFY COLUMN driver_license_expiration_date DATE NULL");
+        }
+
+        Schema::table('user_account_information', function (Blueprint $table) {
+            if (DB::getDriverName() !== 'mysql') {
+                // SQLite: use change() to make the legacy columns nullable
+                $table->string('driver_license_number', 100)->nullable()->change();
+                $table->date('driver_license_expiration_date')->nullable()->change();
+            }
+        });
+
+        // Add id_type: use MySQL ENUM via raw SQL; fall back to nullable string for SQLite (tests)
         if (DB::getDriverName() === 'mysql') {
             DB::statement("ALTER TABLE user_account_information ADD COLUMN id_type ENUM(
                 'driver_license','state_id','passport'
@@ -30,10 +45,14 @@ return new class extends Migration
             // New generic ID columns — added alongside existing driver_license columns.
             // id_number and id_expiry will eventually replace driver_license_number
             // and driver_license_expiration_date once controllers/models are updated.
-            $table->string('id_number', 100)->nullable()->after('id_type');
-            $table->date('id_expiry')->nullable()->after('id_number');
-            $table->string('id_issuing_state', 100)->nullable()->after('id_expiry');
-            $table->string('id_issuing_country', 2)->nullable()->default('US')->after('id_issuing_state');
+            if (DB::getDriverName() !== 'mysql') {
+                // SQLite (used in tests) does not support ENUM; use nullable string instead
+                $table->string('id_type', 20)->nullable();
+            }
+            $table->string('id_number', 100)->nullable();
+            $table->date('id_expiry')->nullable();
+            $table->string('id_issuing_state', 100)->nullable();
+            $table->string('id_issuing_country', 2)->nullable()->default('US');
         });
     }
 

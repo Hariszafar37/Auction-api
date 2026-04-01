@@ -18,7 +18,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -37,16 +36,22 @@ class AuthController extends Controller
             $lastName  = $request->last_name;
 
             $user = User::create([
-                'name'               => trim("{$firstName} {$lastName}"),
-                'first_name'         => $firstName,
-                'last_name'          => $lastName,
-                'email'              => $request->email,
-                'password'           => null,
-                'primary_phone'      => $request->primary_phone,
-                'secondary_phone'    => $request->secondary_phone,
-                'consent_marketing'  => $request->boolean('consent_marketing', false),
-                'agreed_terms_at'    => now(),
-                'status'             => 'pending_email_verification',
+                'name'                     => trim("{$firstName} {$lastName}"),
+                'first_name'               => $firstName,
+                'middle_name'              => $request->middle_name,
+                'last_name'                => $lastName,
+                'email'                    => $request->email,
+                'password'                 => null,
+                'primary_phone'            => $request->primary_phone,
+                'secondary_phone'          => $request->secondary_phone,
+                'consent_marketing'        => $request->boolean('consent_marketing', false),
+                'agreed_terms_at'          => now(),
+                'status'                   => 'pending_email_verification',
+                'registration_ip_address'  => $request->ip(),
+                'terms_version'            => config('app.terms_version', '1.0'),
+                'agree_bidder_terms'       => (bool) $request->agree_bidder_terms,
+                'agree_ecomm_consent'      => (bool) $request->agree_ecomm_consent,
+                'agree_accuracy_confirmed' => (bool) $request->agree_accuracy_confirmed,
             ]);
 
             $user->assignRole('buyer'); // default role; updated on activation if dealer
@@ -196,10 +201,6 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        // TODO: remove after debugging 401
-        Log::debug('[me] Authorization header: ' . $request->header('Authorization', '(none)'));
-        Log::debug('[me] auth()->check(): ' . ($request->user() ? 'true (user #' . $request->user()->id . ')' : 'false'));
-
         $user = $request->user()->load([
             'accountInformation',
             'dealerInformation',

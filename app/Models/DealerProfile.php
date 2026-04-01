@@ -28,6 +28,12 @@ class DealerProfile extends Model
         'dealer_postal_code',
         'dealer_country',
         'dealer_license_document_path',
+        'dealer_classification',
+        'can_sell_to_public',
+        'inspection_passed',
+        'tags_required',
+        'bill_of_sale_received',
+        'admin_notes',
     ];
 
     protected function casts(): array

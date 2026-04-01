@@ -18,8 +18,15 @@ class UserAccountInformation extends Model
         'county',
         'city',
         'zip_postal_code',
+        // Legacy columns — kept for backward compatibility with existing test fixtures
         'driver_license_number',
         'driver_license_expiration_date',
+        // New generic ID columns (Phase 2 compliance)
+        'id_type',
+        'id_number',
+        'id_issuing_state',
+        'id_issuing_country',
+        'id_expiry',
     ];
 
     protected function casts(): array
@@ -27,6 +34,7 @@ class UserAccountInformation extends Model
         return [
             'date_of_birth'                  => 'date',
             'driver_license_expiration_date' => 'date',
+            'id_expiry'                      => 'date',
         ];
     }
 

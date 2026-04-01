@@ -3,12 +3,16 @@
 use App\Http\Controllers\Api\V1\Activation\ActivationController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
+use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
+use App\Http\Controllers\Api\V1\Admin\AdminGovController;
+use App\Http\Controllers\Api\V1\Admin\AdminPoaController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auction\AuctionController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
+use App\Http\Controllers\Api\V1\PowerOfAttorneyController;
 use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleMediaController;
@@ -85,7 +89,14 @@ Route::prefix('v1')->group(function () {
             Route::post('/billing-information',  [ActivationController::class, 'billingInformation'])->name('billing-information');
             Route::post('/upload-documents',    [ActivationController::class, 'uploadDocuments'])->name('upload-documents');
             Route::post('/complete',            [ActivationController::class, 'complete'])->name('complete');
+
+            // Power of Attorney
+            Route::post('/poa/upload', [PowerOfAttorneyController::class, 'upload'])->name('poa.upload');
+            Route::post('/poa/esign',  [PowerOfAttorneyController::class, 'esign'])->name('poa.esign');
         });
+
+        // My POA record
+        Route::get('/my/poa', [PowerOfAttorneyController::class, 'show'])->name('my.poa');
 
         /*
         |----------------------------------------------------------------------
@@ -204,6 +215,9 @@ Route::prefix('v1')->group(function () {
                 Route::delete('/{auction}/lots/{lot}', [AdminAuctionLotController::class, 'destroy'])->name('lots.destroy');
             });
 
+            // Documents
+            Route::patch('/documents/{document}/status', [AdminDocumentController::class, 'updateStatus'])->name('documents.status');
+
             // Vehicles
             // NOTE: export route must be registered BEFORE /{vehicle} to avoid routing conflict.
             Route::prefix('vehicles')->name('vehicles.')->group(function () {
@@ -214,12 +228,29 @@ Route::prefix('v1')->group(function () {
                 Route::patch('/{vehicle}',         [AdminVehicleController::class, 'update'])->name('update');
                 Route::delete('/{vehicle}',        [AdminVehicleController::class, 'destroy'])->name('destroy');
                 Route::patch('/{vehicle}/status',  [AdminVehicleController::class, 'updateStatus'])->name('status');
+                Route::post('/{vehicle}/mark-title-received', [AdminVehicleController::class, 'markTitleReceived'])->name('mark-title-received');
 
                 // Vehicle media management
                 // NOTE: /reorder registered before /{media} to avoid routing conflict.
                 Route::post('/{vehicle}/media',                      [AdminVehicleMediaController::class, 'store'])->name('media.store');
                 Route::patch('/{vehicle}/media/reorder',             [AdminVehicleMediaController::class, 'reorder'])->name('media.reorder');
                 Route::delete('/{vehicle}/media/{media}',            [AdminVehicleMediaController::class, 'destroy'])->name('media.destroy');
+            });
+
+            // POA admin review
+            Route::prefix('users/{user}/poa')->name('users.poa.')->group(function () {
+                Route::get('/',                   [AdminPoaController::class, 'index'])->name('index');
+                Route::post('/{poa}/approve',     [AdminPoaController::class, 'approve'])->name('approve');
+                Route::post('/{poa}/reject',      [AdminPoaController::class, 'reject'])->name('reject');
+            });
+
+            // Government accounts
+            Route::prefix('government')->name('government.')->group(function () {
+                Route::get('/pending',           [AdminGovController::class, 'pending'])->name('pending');
+                Route::post('/',                 [AdminGovController::class, 'store'])->name('store');
+                Route::post('/{user}/invite',    [AdminGovController::class, 'sendInvite'])->name('invite');
+                Route::post('/{user}/approve',   [AdminGovController::class, 'approve'])->name('approve');
+                Route::post('/{user}/reject',    [AdminGovController::class, 'reject'])->name('reject');
             });
 
             // Lot-level operations (auctioneer controls)

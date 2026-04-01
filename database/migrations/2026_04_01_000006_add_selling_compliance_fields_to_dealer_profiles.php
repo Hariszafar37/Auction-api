@@ -17,11 +17,15 @@ return new class extends Migration
         }
 
         Schema::table('dealer_profiles', function (Blueprint $table) {
-            $table->boolean('can_sell_to_public')->nullable()->after('dealer_classification');
-            $table->boolean('inspection_passed')->nullable()->after('can_sell_to_public');
-            $table->boolean('tags_required')->nullable()->after('inspection_passed');
-            $table->boolean('bill_of_sale_received')->default(false)->after('tags_required');
-            $table->text('admin_notes')->nullable()->after('bill_of_sale_received');
+            if (DB::getDriverName() !== 'mysql') {
+                // SQLite (used in tests) does not support ENUM; use nullable string instead
+                $table->string('dealer_classification', 30)->nullable();
+            }
+            $table->boolean('can_sell_to_public')->nullable();
+            $table->boolean('inspection_passed')->nullable();
+            $table->boolean('tags_required')->nullable();
+            $table->boolean('bill_of_sale_received')->default(false);
+            $table->text('admin_notes')->nullable();
         });
     }
 

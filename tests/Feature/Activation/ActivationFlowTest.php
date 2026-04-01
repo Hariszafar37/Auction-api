@@ -30,7 +30,7 @@ it('saves account type individual', function () {
     $user = makeActivationReadyUser();
 
     $this->actingAs($user)
-        ->postJson('/api/v1/activation/account-type', ['account_type' => 'individual'])
+        ->postJson('/api/v1/activation/account-type', ['account_type' => 'individual', 'account_intent' => 'buyer'])
         ->assertOk()
         ->assertJsonPath('data.account_type', 'individual');
 
@@ -51,7 +51,7 @@ it('rejects invalid account type', function () {
     $user = makeActivationReadyUser();
 
     $this->actingAs($user)
-        ->postJson('/api/v1/activation/account-type', ['account_type' => 'unknown'])
+        ->postJson('/api/v1/activation/account-type', ['account_type' => 'unknown', 'account_intent' => 'buyer'])
         ->assertStatus(422);
 });
 
@@ -61,20 +61,21 @@ it('saves account information', function () {
     $user = makeActivationReadyUser();
 
     $this->actingAs($user)->postJson('/api/v1/activation/account-information', [
-        'date_of_birth'                  => '1990-01-15',
-        'address'                        => '123 Main St',
-        'country'                        => 'US',
-        'state'                          => 'California',
-        'city'                           => 'Los Angeles',
-        'zip_postal_code'                => '90001',
-        'driver_license_number'          => 'DL-999',
-        'driver_license_expiration_date' => now()->addYears(2)->format('Y-m-d'),
+        'date_of_birth'   => '1990-01-15',
+        'address'         => '123 Main St',
+        'country'         => 'US',
+        'state'           => 'California',
+        'city'            => 'Los Angeles',
+        'zip_postal_code' => '90001',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'DL-999',
+        'id_expiry'       => now()->addYears(2)->format('Y-m-d'),
     ])->assertOk();
 
     $this->assertDatabaseHas('user_account_information', [
-        'user_id'               => $user->id,
-        'driver_license_number' => 'DL-999',
-        'city'                  => 'Los Angeles',
+        'user_id'   => $user->id,
+        'id_number' => 'DL-999',
+        'city'      => 'Los Angeles',
     ]);
 });
 
@@ -82,14 +83,15 @@ it('rejects account information when dob indicates under 18', function () {
     $user = makeActivationReadyUser();
 
     $this->actingAs($user)->postJson('/api/v1/activation/account-information', [
-        'date_of_birth'                  => now()->subYears(17)->format('Y-m-d'),
-        'address'                        => '123 Main St',
-        'country'                        => 'US',
-        'state'                          => 'CA',
-        'city'                           => 'LA',
-        'zip_postal_code'                => '90001',
-        'driver_license_number'          => 'DL-999',
-        'driver_license_expiration_date' => now()->addYears(2)->format('Y-m-d'),
+        'date_of_birth'   => now()->subYears(17)->format('Y-m-d'),
+        'address'         => '123 Main St',
+        'country'         => 'US',
+        'state'           => 'CA',
+        'city'            => 'LA',
+        'zip_postal_code' => '90001',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'DL-999',
+        'id_expiry'       => now()->addYears(2)->format('Y-m-d'),
     ])->assertStatus(422)
       ->assertJsonPath('errors.date_of_birth', fn ($v) => count($v) > 0);
 });
@@ -111,6 +113,8 @@ it('saves dealer information for dealer account', function () {
         'dealer_country'          => 'US',
         'dealer_city'             => 'Houston',
         'dealer_zip_code'         => '77001',
+        'dealer_type'             => 'retail',
+        'dealer_classification'   => 'maryland_retail',
     ])->assertOk();
 
     $this->assertDatabaseHas('user_dealer_information', [
@@ -134,6 +138,8 @@ it('rejects dealer information for non-dealer account', function () {
         'dealer_country'          => 'US',
         'dealer_city'             => 'NYC',
         'dealer_zip_code'         => '10001',
+        'dealer_type'             => 'retail',
+        'dealer_classification'   => 'maryland_retail',
     ])->assertStatus(422)
       ->assertJsonPath('code', 'not_a_dealer');
 });
