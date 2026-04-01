@@ -12,11 +12,15 @@ class UserDocument extends Model
     protected $fillable = [
         'user_id',
         'type',
+        'status',
         'file_path',
         'disk',
         'original_name',
         'mime_type',
         'size_bytes',
+        'admin_notes',
+        'reviewed_by',
+        'reviewed_at',
     ];
 
     public function user(): BelongsTo

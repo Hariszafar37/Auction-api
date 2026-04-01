@@ -12,8 +12,10 @@ class UserDealerInformation extends Model
     protected $fillable = [
         'user_id',
         'company_name',
+        'dba_name',
         'owner_name',
         'phone',
+        'office_phone',
         'primary_contact',
         'license_number',
         'license_expiration_date',
@@ -23,12 +25,18 @@ class UserDealerInformation extends Model
         'dealer_city',
         'dealer_state',
         'dealer_zip_code',
+        'dealer_type',
+        'salesman_name',
+        'salesman_license_number',
+        'salesman_license_state',
+        'salesman_license_expiry',
     ];
 
     protected function casts(): array
     {
         return [
             'license_expiration_date' => 'date',
+            'salesman_license_expiry' => 'date',
         ];
     }
 

@@ -15,7 +15,8 @@ class AccountTypeRequest extends FormRequest
     {
         return [
             // government is reserved for admin-created accounts only — not selectable via public endpoint
-            'account_type' => ['required', 'in:individual,dealer,business'],
+            'account_type'   => ['required', 'in:individual,dealer,business'],
+            'account_intent' => ['required_if:account_type,individual', 'nullable', 'in:buyer,seller,buyer_and_seller'],
         ];
     }
 }

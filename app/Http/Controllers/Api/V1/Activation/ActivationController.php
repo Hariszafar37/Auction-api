@@ -12,6 +12,7 @@ use App\Http\Requests\Activation\UploadDocumentRequest;
 use App\Http\Resources\UserResource;
 use App\Models\BusinessProfile;
 use App\Models\DealerProfile;
+use App\Models\PowerOfAttorney;
 use App\Models\UserDocument;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,10 +43,10 @@ class ActivationController extends Controller
             // business-specific permissions will be layered in a future phase
             $user->syncRoles(['buyer']);
 
-            // Individuals are buyers only — seller capability requires the dealer/business flow.
             // Business accounts collect their own account_intent in a dedicated wizard step.
+            // Individuals now choose their intent explicitly via the request field.
             if ($request->account_type === 'individual') {
-                $user->update(['account_intent' => 'buyer']);
+                $user->update(['account_intent' => $request->account_intent]);
             }
         }
 
@@ -76,8 +77,11 @@ class ActivationController extends Controller
                 'county',
                 'city',
                 'zip_postal_code',
-                'driver_license_number',
-                'driver_license_expiration_date',
+                'id_type',
+                'id_number',
+                'id_issuing_state',
+                'id_issuing_country',
+                'id_expiry',
             ])
         );
 
@@ -106,8 +110,10 @@ class ActivationController extends Controller
             ['user_id' => $user->id],
             $request->only([
                 'company_name',
+                'dba_name',
                 'owner_name',
                 'phone',
+                'office_phone',
                 'primary_contact',
                 'license_number',
                 'license_expiration_date',
@@ -117,7 +123,31 @@ class ActivationController extends Controller
                 'dealer_city',
                 'dealer_state',
                 'dealer_zip_code',
+                'dealer_type',
+                'salesman_name',
+                'salesman_license_number',
+                'salesman_license_state',
+                'salesman_license_expiry',
             ])
+        );
+
+        // Determine can_sell_to_public and tags_required from dealer_classification
+        $classification   = $request->dealer_classification;
+        $canSellToPublic  = in_array($classification, ['maryland_retail', 'out_of_state_retail']);
+        $tagsRequired     = $classification === 'maryland_retail';
+
+        // Update classification flags on the DealerProfile (created fully in complete()).
+        // If the profile doesn't exist yet, create a partial record with required fields so
+        // NOT NULL constraints are satisfied; complete() will overwrite all fields anyway.
+        DealerProfile::updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'company_name'          => $request->company_name,
+                'dealer_license'        => $request->license_number,
+                'dealer_classification' => $classification,
+                'can_sell_to_public'    => $canSellToPublic,
+                'tags_required'         => $tagsRequired,
+            ]
         );
 
         return $this->success(
@@ -293,6 +323,17 @@ class ActivationController extends Controller
 
         if (! $user->documents()->exists()) {
             $errors[] = 'At least one document must be uploaded.';
+        }
+
+        // POA is required for seller and buyer_and_seller intents
+        if (in_array($user->account_intent, ['seller', 'buyer_and_seller'])) {
+            $hasSignedPoa = PowerOfAttorney::where('user_id', $user->id)
+                ->whereIn('status', ['signed', 'approved'])
+                ->exists();
+
+            if (! $hasSignedPoa) {
+                $errors[] = 'A signed Power of Attorney is required before completing activation for seller accounts. Please upload or e-sign your POA document.';
+            }
         }
 
         if (! empty($errors)) {

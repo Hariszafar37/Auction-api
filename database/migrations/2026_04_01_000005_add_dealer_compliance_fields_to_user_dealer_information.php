@@ -10,8 +10,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('user_dealer_information', function (Blueprint $table) {
-            $table->string('dba_name', 255)->nullable()->after('company_name');
-            $table->string('office_phone', 30)->nullable()->after('phone');
+            $table->string('dba_name', 255)->nullable();
+            $table->string('office_phone', 30)->nullable();
+            if (DB::getDriverName() !== 'mysql') {
+                // SQLite (used in tests) does not support ENUM; use nullable string instead
+                $table->string('dealer_type', 20)->nullable();
+            }
             $table->string('salesman_name', 255)->nullable();
             $table->string('salesman_license_number', 100)->nullable();
             $table->string('salesman_license_state', 100)->nullable();

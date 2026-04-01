@@ -177,6 +177,28 @@ class AdminVehicleController extends Controller
     }
 
     /**
+     * POST /api/v1/admin/vehicles/{vehicle}/mark-title-received
+     * Mark a vehicle's physical title as received by the auction house.
+     */
+    public function markTitleReceived(Vehicle $vehicle): JsonResponse
+    {
+        if ($vehicle->title_received) {
+            return $this->error('Title already marked as received.', 422, 'title_already_received');
+        }
+
+        $vehicle->update([
+            'title_received'    => true,
+            'title_received_at' => now(),
+            'title_received_by' => auth()->id(),
+        ]);
+
+        return $this->success(
+            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media'])),
+            'Vehicle title marked as received.'
+        );
+    }
+
+    /**
      * GET /api/v1/admin/vehicles/export
      * Stream an XLSX export of the filtered vehicle inventory.
      *
