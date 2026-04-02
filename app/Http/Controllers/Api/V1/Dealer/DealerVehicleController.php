@@ -117,15 +117,13 @@ class DealerVehicleController extends Controller
             return $this->error('Vehicle not found.', 404, 'not_found');
         }
 
-        // Individual sellers (role:seller, not role:dealer) must have an approved POA
-        if ($user->hasRole('seller') && ! $user->hasRole('dealer')) {
-            if (! $user->hasApprovedPoa()) {
-                return $this->error(
-                    'An approved Power of Attorney is required before submitting vehicles to auction.',
-                    403,
-                    'poa_required'
-                );
-            }
+        // All seller-enabled accounts (individual, dealer, business) need an approved POA
+        if ($user->hasSellIntent() && ! $user->hasApprovedPoa()) {
+            return $this->error(
+                'An approved Power of Attorney is required before submitting vehicles to auction.',
+                403,
+                'poa_required'
+            );
         }
 
         $data = $request->validate([

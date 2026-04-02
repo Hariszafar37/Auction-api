@@ -202,6 +202,31 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Whether this account has selling intent and therefore requires an approved POA
+     * before submitting vehicles to auction.
+     *
+     * Covers all three seller-enabled account types per client requirement:
+     *   - individual sellers  (role:seller assigned by admin after application)
+     *   - dealer sellers      (role:dealer — dealers always have buyer_and_seller intent)
+     *   - business sellers    (account_intent includes 'seller' or 'buyer_and_seller')
+     */
+    public function hasSellIntent(): bool
+    {
+        // Dealers always sell — intent is hardcoded to buyer_and_seller at activation
+        if ($this->hasRole('dealer')) {
+            return true;
+        }
+
+        // Individual sellers explicitly approved by admin
+        if ($this->hasRole('seller')) {
+            return true;
+        }
+
+        // Business (and any other) accounts with explicit selling intent
+        return in_array($this->account_intent, ['seller', 'buyer_and_seller'], true);
+    }
+
+    /**
      * Whether the user's dealer classification is wholesale (any variant).
      */
     public function isWholesaleDealer(): bool

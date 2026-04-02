@@ -164,8 +164,8 @@ class AuctionService
         $isAdmin = $requestingUser && $requestingUser->hasRole('admin');
 
         if (! $isAdmin) {
-            // POA check: individual sellers (role:seller, not role:dealer) need an approved POA
-            if ($seller && $seller->hasRole('seller') && ! $seller->hasRole('dealer')) {
+            // POA check: all seller-enabled accounts (individual, dealer, business) need an approved POA
+            if ($seller && $seller->hasSellIntent()) {
                 if (! $seller->hasApprovedPoa()) {
                     throw ValidationException::withMessages([
                         'poa' => ['An approved Power of Attorney is required before submitting a vehicle to auction.'],

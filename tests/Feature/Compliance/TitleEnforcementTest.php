@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\DealerProfile;
+use App\Models\PowerOfAttorney;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\Auction;
@@ -29,6 +30,13 @@ function makeDealerWithClassification(string $classification): array
         'can_sell_to_public'     => in_array($classification, ['maryland_retail', 'out_of_state_retail']),
         'inspection_passed'      => null,
         'bill_of_sale_received'  => false,
+    ]);
+    // Phase 6: all dealers need an approved POA before submitting vehicles
+    PowerOfAttorney::create([
+        'user_id'             => $dealer->id,
+        'type'                => 'esign',
+        'status'              => 'approved',
+        'signer_printed_name' => $dealer->name,
     ]);
     return [$dealer, $profile];
 }
