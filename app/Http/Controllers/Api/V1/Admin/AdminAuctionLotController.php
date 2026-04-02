@@ -32,7 +32,7 @@ class AdminAuctionLotController extends Controller
         $vehicle = Vehicle::find($request->integer('vehicle_id'));
 
         try {
-            $lot = $this->auctionService->addLot($auction, $vehicle, $request->validated());
+            $lot = $this->auctionService->addLot($auction, $vehicle, $request->validated(), $request->user());
         } catch (ValidationException $e) {
             return $this->error($e->getMessage(), 422, 'lot_add_failed', $e->errors());
         }

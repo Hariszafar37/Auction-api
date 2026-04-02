@@ -20,6 +20,7 @@ class AuctionLot extends Model
         'current_winner_id',
         'bid_count',
         'requires_seller_approval',
+        'dealer_only',
         'seller_notified_at',
         'seller_decision_deadline',
         'seller_approved_at',
@@ -35,6 +36,7 @@ class AuctionLot extends Model
     protected $casts = [
         'status'                   => LotStatus::class,
         'requires_seller_approval' => 'boolean',
+        'dealer_only'              => 'boolean',
         'starting_bid'             => 'integer',
         'reserve_price'            => 'integer',
         'current_bid'              => 'integer',

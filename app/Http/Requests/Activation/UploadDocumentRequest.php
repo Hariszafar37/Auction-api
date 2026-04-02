@@ -14,7 +14,7 @@ class UploadDocumentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'document_type' => ['required', 'in:id,license'],
+            'document_type' => ['required', 'in:id,dealer_license,salesman_license,articles_of_incorporation,authority_letter,power_of_attorney,bill_of_sale,other'],
             'file'          => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:2048'],
         ];
     }

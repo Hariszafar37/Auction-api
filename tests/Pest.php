@@ -18,3 +18,7 @@ pest()->extend(Tests\TestCase::class)
 // Shared auction factory helpers — scoped to auction tests only.
 pest()->use(Tests\Helpers\CreatesAuctionData::class)
     ->in('Feature/Auction');
+
+// Shared auction factory helpers — also available in compliance tests.
+pest()->use(Tests\Helpers\CreatesAuctionData::class)
+    ->in('Feature/Compliance');

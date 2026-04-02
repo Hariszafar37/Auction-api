@@ -39,6 +39,8 @@ class AuctionLotResource extends JsonResource
             'countdown_seconds'    => $this->countdown_seconds,
             'countdown_extensions' => $this->countdown_extensions,
 
+            'dealer_only'              => $this->dealer_only,
+
             // If Sale
             'requires_seller_approval' => $this->requires_seller_approval,
             'seller_decision_deadline' => $this->when(

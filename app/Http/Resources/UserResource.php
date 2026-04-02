@@ -32,15 +32,18 @@ class UserResource extends JsonResource
 
             // Step data (loaded on demand)
             'account_information'     => $this->whenLoaded('accountInformation', fn () => $this->accountInformation ? [
-                'date_of_birth'                  => $this->accountInformation->date_of_birth?->toDateString(),
-                'address'                        => $this->accountInformation->address,
-                'country'                        => $this->accountInformation->country,
-                'state'                          => $this->accountInformation->state,
-                'county'                         => $this->accountInformation->county,
-                'city'                           => $this->accountInformation->city,
-                'zip_postal_code'                => $this->accountInformation->zip_postal_code,
-                'driver_license_number'          => $this->accountInformation->driver_license_number,
-                'driver_license_expiration_date' => $this->accountInformation->driver_license_expiration_date?->toDateString(),
+                'date_of_birth'      => $this->accountInformation->date_of_birth?->toDateString(),
+                'address'            => $this->accountInformation->address,
+                'country'            => $this->accountInformation->country,
+                'state'              => $this->accountInformation->state,
+                'county'             => $this->accountInformation->county,
+                'city'               => $this->accountInformation->city,
+                'zip_postal_code'    => $this->accountInformation->zip_postal_code,
+                'id_type'            => $this->accountInformation->id_type,
+                'id_number'          => $this->accountInformation->id_number,
+                'id_issuing_state'   => $this->accountInformation->id_issuing_state,
+                'id_issuing_country' => $this->accountInformation->id_issuing_country,
+                'id_expiry'          => $this->accountInformation->id_expiry?->toDateString(),
             ] : null),
 
             'dealer_information'      => $this->whenLoaded('dealerInformation', fn () => $this->dealerInformation ? [
@@ -88,6 +91,13 @@ class UserResource extends JsonResource
                 'original_name' => $doc->original_name,
                 'mime_type'     => $doc->mime_type,
                 'size_bytes'    => $doc->size_bytes,
+                'status'        => $doc->status ?? 'pending_review',
+                'admin_notes'   => $doc->admin_notes,
+                'reviewed_by'   => $doc->reviewed_by,
+                'reviewed_at'   => $doc->reviewed_at?->toIso8601String(),
+                'url'           => $doc->file_path
+                                    ? \Illuminate\Support\Facades\Storage::url($doc->file_path)
+                                    : null,
                 'uploaded_at'   => $doc->created_at->toIso8601String(),
             ])),
 
