@@ -25,7 +25,41 @@ function makeIndividualSeller(): User
     return $user;
 }
 
-function makeScheduledAuction(): Auction
+function makeDealerSeller(): User
+{
+    $dealer = User::factory()->create([
+        'status'         => 'active',
+        'account_type'   => 'dealer',
+        'account_intent' => 'buyer_and_seller', // set automatically for dealers
+    ]);
+    $dealer->assignRole('dealer');
+    DealerProfile::create([
+        'user_id'         => $dealer->id,
+        'company_name'    => 'Test Motors',
+        'dealer_license'  => 'DLR-' . rand(100, 999),
+        'approval_status' => 'approved',
+    ]);
+    return $dealer;
+}
+
+function makeBusinessSeller(): User
+{
+    // SQLite test DB only has individual/dealer in the account_type CHECK constraint.
+    // hasSellIntent() never checks account_type — it checks roles + account_intent —
+    // so individual+buyer_and_seller is the correct stand-in for a business seller.
+    $user = User::factory()->create([
+        'status'         => 'active',
+        'account_type'   => 'individual',
+        'account_intent' => 'buyer_and_seller',
+    ]);
+    // Buyer role is assigned at activation; inventory.create granted here
+    // to simulate the future business-permission layer
+    $user->assignRole('buyer');
+    $user->givePermissionTo('inventory.create');
+    return $user;
+}
+
+function makePoaAuction(): Auction
 {
     $admin = User::factory()->create(['status' => 'active']);
     return Auction::create([
@@ -37,35 +71,36 @@ function makeScheduledAuction(): Auction
     ]);
 }
 
-// Test 1: Individual seller without approved POA cannot submit vehicle to auction
-it('individual seller without approved POA cannot submit vehicle to auction', function () {
-    $seller  = makeIndividualSeller();
-    $auction = makeScheduledAuction();
-    $vehicle = Vehicle::factory()->create([
-        'seller_id' => $seller->id,
-        'status'    => 'available',
+function grantApprovedPoa(User $user): PowerOfAttorney
+{
+    return PowerOfAttorney::create([
+        'user_id'              => $user->id,
+        'type'                 => 'esign',
+        'status'               => 'approved',
+        'signer_printed_name'  => $user->name,
     ]);
+}
 
-    // No POA at all
-    $response = $this->actingAs($seller, 'sanctum')
+// ══ INDIVIDUAL SELLER ════════════════════════════════════════════════════
+
+it('individual seller without POA cannot submit vehicle to auction', function () {
+    $seller  = makeIndividualSeller();
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $seller->id, 'status' => 'available']);
+
+    $this->actingAs($seller, 'sanctum')
         ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
-            'auction_id'    => $auction->id,
-            'starting_bid'  => 500,
-            'reserve_price' => null,
-        ]);
-
-    $response->assertStatus(403)
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
         ->assertJsonPath('code', 'poa_required');
 });
 
-// Test 2: Individual seller with signed (not yet approved) POA cannot submit
-it('individual seller with only signed POA cannot submit vehicle to auction', function () {
+it('individual seller with only signed (pending) POA is still blocked', function () {
     $seller  = makeIndividualSeller();
-    $auction = makeScheduledAuction();
-    $vehicle = Vehicle::factory()->create([
-        'seller_id' => $seller->id,
-        'status'    => 'available',
-    ]);
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $seller->id, 'status' => 'available']);
 
     PowerOfAttorney::create([
         'user_id' => $seller->id,
@@ -74,70 +109,177 @@ it('individual seller with only signed POA cannot submit vehicle to auction', fu
         'signer_printed_name' => 'John Doe',
     ]);
 
-    $response = $this->actingAs($seller, 'sanctum')
+    $this->actingAs($seller, 'sanctum')
         ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
-            'auction_id'    => $auction->id,
-            'starting_bid'  => 500,
-            'reserve_price' => null,
-        ]);
-
-    $response->assertStatus(403)
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
         ->assertJsonPath('code', 'poa_required');
 });
 
-// Test 10: Approved POA unlocks seller restriction
-it('individual seller with approved POA can submit vehicle to auction', function () {
+it('approved POA unlocks individual seller submission', function () {
     $seller  = makeIndividualSeller();
-    $auction = makeScheduledAuction();
-    $vehicle = Vehicle::factory()->create([
-        'seller_id' => $seller->id,
-        'status'    => 'available',
-    ]);
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $seller->id, 'status' => 'available']);
 
-    PowerOfAttorney::create([
-        'user_id' => $seller->id,
-        'type'    => 'esign',
-        'status'  => 'approved',
-        'signer_printed_name' => 'John Doe',
-    ]);
+    grantApprovedPoa($seller);
 
-    $response = $this->actingAs($seller, 'sanctum')
+    $this->actingAs($seller, 'sanctum')
         ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
-            'auction_id'    => $auction->id,
-            'starting_bid'  => 500,
-            'reserve_price' => null,
-        ]);
-
-    $response->assertStatus(201);
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(201);
 });
 
-// Test: Dealer (not individual seller) can submit without POA
-it('dealer can submit vehicle without POA', function () {
-    $dealer = User::factory()->create([
-        'status'       => 'active',
-        'account_type' => 'dealer',
-    ]);
-    $dealer->assignRole('dealer');
-    DealerProfile::create([
-        'user_id'         => $dealer->id,
-        'company_name'    => 'Test Motors',
-        'dealer_license'  => 'DLR-001',
-        'approval_status' => 'approved',
-    ]);
+// ══ DEALER SELLER ════════════════════════════════════════════════════════
 
-    $auction = makeScheduledAuction();
-    $vehicle = Vehicle::factory()->create([
-        'seller_id' => $dealer->id,
-        'status'    => 'available',
-    ]);
+it('dealer seller without approved POA cannot submit vehicle to auction', function () {
+    $dealer  = makeDealerSeller();
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $dealer->id, 'status' => 'available']);
 
-    $response = $this->actingAs($dealer, 'sanctum')
+    // No POA
+    $this->actingAs($dealer, 'sanctum')
         ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
-            'auction_id'    => $auction->id,
-            'starting_bid'  => 500,
-            'reserve_price' => null,
-        ]);
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'poa_required');
+});
 
-    // Should succeed (no POA required for dealers)
-    $response->assertStatus(201);
+it('dealer seller with only signed POA is still blocked', function () {
+    $dealer  = makeDealerSeller();
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $dealer->id, 'status' => 'available']);
+
+    PowerOfAttorney::create([
+        'user_id' => $dealer->id,
+        'type'    => 'upload',
+        'status'  => 'signed',
+        'file_path' => 'poa/test.pdf',
+    ]);
+
+    $this->actingAs($dealer, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'poa_required');
+});
+
+it('approved POA unlocks dealer seller submission', function () {
+    $dealer  = makeDealerSeller();
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $dealer->id, 'status' => 'available']);
+
+    grantApprovedPoa($dealer);
+
+    $this->actingAs($dealer, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(201);
+});
+
+// ══ BUSINESS SELLER ══════════════════════════════════════════════════════
+// Business accounts use the buyer role today; inventory.create is granted
+// directly in these tests to simulate the future business-permission layer.
+// This ensures the POA gate is in place before that permission ships.
+
+it('business seller without approved POA cannot submit vehicle to auction', function () {
+    $business = makeBusinessSeller();
+    $auction  = makePoaAuction();
+    $vehicle  = Vehicle::factory()->create(['seller_id' => $business->id, 'status' => 'available']);
+
+    // No POA
+    $this->actingAs($business, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'poa_required');
+});
+
+it('business seller with only signed POA is still blocked', function () {
+    $business = makeBusinessSeller();
+    $auction  = makePoaAuction();
+    $vehicle  = Vehicle::factory()->create(['seller_id' => $business->id, 'status' => 'available']);
+
+    PowerOfAttorney::create([
+        'user_id' => $business->id,
+        'type'    => 'esign',
+        'status'  => 'signed',
+        'signer_printed_name' => 'Acme Corp',
+    ]);
+
+    $this->actingAs($business, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'poa_required');
+});
+
+it('approved POA unlocks business seller submission', function () {
+    $business = makeBusinessSeller();
+    $auction  = makePoaAuction();
+    $vehicle  = Vehicle::factory()->create(['seller_id' => $business->id, 'status' => 'available']);
+
+    grantApprovedPoa($business);
+
+    $this->actingAs($business, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(201);
+});
+
+// ══ BUYER ACCESS UNAFFECTED ═══════════════════════════════════════════════
+
+it('pure buyer can bid without any POA — buyer flow is not blocked', function () {
+    $adminCreator = User::factory()->create(['status' => 'active']);
+    $seller       = User::factory()->create(['status' => 'active']);
+
+    $auction = Auction::create([
+        'title'      => 'Buyer Test',
+        'location'   => 'Baltimore',
+        'starts_at'  => now()->subHour(),
+        'status'     => AuctionStatus::Live,
+        'created_by' => $adminCreator->id,
+    ]);
+
+    $vehicle = Vehicle::factory()->create(['seller_id' => $seller->id, 'status' => 'in_auction']);
+
+    $lot = \App\Models\AuctionLot::create([
+        'auction_id'               => $auction->id,
+        'vehicle_id'               => $vehicle->id,
+        'lot_number'               => 1,
+        'status'                   => \App\Enums\LotStatus::Open,
+        'starting_bid'             => 1000,
+        'dealer_only'              => false,
+        'countdown_seconds'        => 30,
+        'requires_seller_approval' => false,
+    ]);
+
+    $buyer = User::factory()->create([
+        'status'         => 'active',
+        'account_type'   => 'individual',
+        'account_intent' => 'buyer',
+    ]);
+    $buyer->assignRole('buyer');
+
+    // Buyer has no POA — bidding must still work
+    $this->actingAs($buyer, 'sanctum')
+        ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
+            'amount' => 1000,
+        ])
+        ->assertStatus(200);
 });

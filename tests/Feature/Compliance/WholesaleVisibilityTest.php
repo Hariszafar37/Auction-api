@@ -2,6 +2,7 @@
 
 use App\Models\AuctionLot;
 use App\Models\DealerProfile;
+use App\Models\PowerOfAttorney;
 use App\Models\Auction;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -204,6 +205,14 @@ it('addLot auto-sets dealer_only=true for wholesale dealer vehicle', function ()
     $vehicle = Vehicle::factory()->create([
         'seller_id' => $wholesaleDealer->id,
         'status'    => 'available',
+    ]);
+
+    // Phase 6: all dealers need an approved POA before submitting
+    PowerOfAttorney::create([
+        'user_id'             => $wholesaleDealer->id,
+        'type'                => 'esign',
+        'status'              => 'approved',
+        'signer_printed_name' => $wholesaleDealer->name,
     ]);
 
     $response = $this->actingAs($wholesaleDealer, 'sanctum')
