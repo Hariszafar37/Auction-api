@@ -114,3 +114,53 @@ it('logs out and deletes the token from the database', function () {
         'id' => $newToken->accessToken->id,
     ]);
 });
+
+// ── Auth status enforcement ────────────────────────────────────────────────────
+
+it('rejects login for pending_email_verification status', function () {
+    $user = User::factory()->create([
+        'email'                => 'unverified@example.com',
+        'password'             => \Illuminate\Support\Facades\Hash::make('Secret123!'),
+        'email_verified_at'    => null,
+        'status'               => 'pending_email_verification',
+    ]);
+
+    $this->postJson('/api/v1/auth/login', [
+        'email'    => 'unverified@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(403)
+      ->assertJsonPath('code', 'email_not_verified');
+});
+
+it('rejects login for pending_password status', function () {
+    $user = User::factory()->create([
+        'email'             => 'nopw@example.com',
+        'email_verified_at' => now(),
+        'password'          => \Illuminate\Support\Facades\Hash::make('Secret123!'),
+        'password_set_at'   => null,
+        'status'            => 'pending_password',
+    ]);
+
+    $this->postJson('/api/v1/auth/login', [
+        'email'    => 'nopw@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(403)
+      ->assertJsonPath('code', 'password_not_set');
+});
+
+it('login for pending_activation returns activation_required true', function () {
+    $user = User::factory()->create([
+        'email'             => 'pending@example.com',
+        'email_verified_at' => now(),
+        'password'          => \Illuminate\Support\Facades\Hash::make('Secret123!'),
+        'password_set_at'   => now(),
+        'status'            => 'pending_activation',
+    ]);
+
+    $this->postJson('/api/v1/auth/login', [
+        'email'    => 'pending@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(200)
+      ->assertJsonPath('data.activation_required', true)
+      ->assertJsonPath('data.next_activation_url', '/activation/account-type');
+});

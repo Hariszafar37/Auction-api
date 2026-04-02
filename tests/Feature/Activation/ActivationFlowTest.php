@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\BusinessProfile;
+use App\Models\PowerOfAttorney;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Http\UploadedFile;
@@ -318,4 +320,158 @@ it('rejects complete when no document has been uploaded', function () {
         ->postJson('/api/v1/activation/complete')
         ->assertStatus(422)
         ->assertJsonPath('code', 'activation_incomplete');
+});
+
+// ── Individual seller intent — POA gate ───────────────────────────────────────
+
+it('individual seller intent requires signed POA before activation complete', function () {
+    $user = makeActivationReadyUser();
+    completeAllSteps($user, 'individual');
+    $user->update(['account_intent' => 'seller']);
+    // No POA uploaded
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'activation_incomplete');
+});
+
+it('individual seller intent with signed POA can complete activation', function () {
+    $user = makeActivationReadyUser();
+    completeAllSteps($user, 'individual');
+    $user->update(['account_intent' => 'seller']);
+
+    PowerOfAttorney::create([
+        'user_id'             => $user->id,
+        'type'                => 'esign',
+        'status'              => 'signed',
+        'signer_printed_name' => $user->first_name . ' ' . $user->last_name,
+    ]);
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertOk()
+        ->assertJsonPath('data.activation_required', false);
+});
+
+// ── Account type: individual — account_intent persistence ─────────────────────
+
+it('account-type step saves account_intent for individual', function () {
+    $user = makeActivationReadyUser();
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/account-type', [
+            'account_type'   => 'individual',
+            'account_intent' => 'buyer_and_seller',
+        ])->assertOk();
+
+    expect($user->fresh()->account_intent)->toBe('buyer_and_seller');
+});
+
+// ── Business information step ─────────────────────────────────────────────────
+
+it('saves business information for business account', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'business']);
+
+    $this->actingAs($user)->postJson('/api/v1/activation/business-information', [
+        'legal_business_name'  => 'Acme Corp',
+        'primary_contact_name' => 'Jane Smith',
+        'contact_title'        => 'CEO',
+        'phone'                => '555-800-9000',
+        'address'              => '1 Corporate Drive',
+        'city'                 => 'Baltimore',
+        'state'                => 'MD',
+        'zip'                  => '21201',
+        'entity_type'          => 'llc',
+        'state_of_formation'   => 'MD',
+        'account_intent'       => 'buyer',
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_business_information', [
+        'user_id'             => $user->id,
+        'legal_business_name' => 'Acme Corp',
+    ]);
+    expect($user->fresh()->account_intent)->toBe('buyer');
+});
+
+it('rejects business-information for non-business account', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'individual']);
+
+    $this->actingAs($user)->postJson('/api/v1/activation/business-information', [
+        'legal_business_name'  => 'Fake Corp',
+        'primary_contact_name' => 'Bob',
+        'contact_title'        => 'CEO',
+        'phone'                => '555-000-0000',
+        'address'              => '1 St',
+        'city'                 => 'NYC',
+        'state'                => 'NY',
+        'zip'                  => '10001',
+        'entity_type'          => 'llc',
+        'state_of_formation'   => 'NY',
+        'account_intent'       => 'buyer',
+    ])->assertStatus(422)
+      ->assertJsonPath('code', 'not_a_business');
+});
+
+// ── Business account completion ───────────────────────────────────────────────
+
+it('completes activation for a business and sets status to pending_activation', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'business']);
+
+    // Business info instead of personal account info
+    $user->businessInformation()->create([
+        'legal_business_name'  => 'Test Biz LLC',
+        'entity_type'          => 'llc',
+        'primary_contact_name' => 'Jane',
+        'contact_title'        => 'CEO',
+        'phone'                => '555-111-2222',
+        'address'              => '1 Biz Rd',
+        'city'                 => 'Baltimore',
+        'state'                => 'MD',
+        'zip'                  => '21201',
+        'state_of_formation'   => 'MD',
+    ]);
+
+    $user->billingInformation()->create([
+        'billing_address'         => '200 Bill St',
+        'billing_country'         => 'US',
+        'billing_city'            => 'Baltimore',
+        'billing_zip_postal_code' => '21201',
+    ]);
+
+    $user->documents()->create([
+        'type' => 'id', 'file_path' => 'x', 'disk' => 'public',
+        'original_name' => 'x.jpg', 'mime_type' => 'image/jpeg', 'size_bytes' => 1000,
+    ]);
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertOk()
+        ->assertJsonPath('data.activation_status', 'pending_approval');
+
+    expect($user->fresh()->status)->toBe('pending_activation');
+    $this->assertDatabaseHas('business_profiles', [
+        'user_id'         => $user->id,
+        'approval_status' => 'pending',
+    ]);
+});
+
+// ── Already-active guard ──────────────────────────────────────────────────────
+
+it('already-active user cannot re-submit activation steps', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['status' => 'active', 'account_type' => 'individual']);
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/account-type', ['account_type' => 'dealer'])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'already_active');
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'already_active');
 });
