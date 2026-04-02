@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -100,11 +101,25 @@ class Vehicle extends Model implements HasMedia
 
     /**
      * Only vehicles visible on the public inventory.
-     * Excludes withdrawn vehicles, soft-deleted records, and sold vehicles.
+     * Excludes withdrawn, sold, soft-deleted, and wholesale-dealer vehicles for non-dealer/non-admin viewers.
      */
-    public function scopePubliclyVisible(Builder $query): Builder
+    public function scopePubliclyVisible(Builder $query, ?User $viewer = null): Builder
     {
-        return $query->whereIn('status', ['available', 'in_auction']);
+        $query->whereIn('status', ['available', 'in_auction']);
+
+        // Wholesale dealer vehicles are hidden from non-dealer and non-admin users
+        $isPrivileged = $viewer && ($viewer->hasRole('dealer') || $viewer->hasRole('admin'));
+        if (! $isPrivileged) {
+            $query->where(function (Builder $q) {
+                $q->whereDoesntHave('seller', function ($u) {
+                    $u->whereHas('dealerProfile', fn ($dp) =>
+                        $dp->whereIn('dealer_classification', ['maryland_wholesale', 'out_of_state_wholesale'])
+                    );
+                });
+            });
+        }
+
+        return $query;
     }
 
     /**

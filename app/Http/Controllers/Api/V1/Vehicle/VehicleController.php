@@ -38,7 +38,7 @@ class VehicleController extends Controller
     {
         $perPage = min((int) $request->input('per_page', 20), 50);
 
-        $query = Vehicle::publiclyVisible()
+        $query = Vehicle::publiclyVisible($request->user())
             ->with([
                 'activeLot.auction',
                 'media',
@@ -84,10 +84,20 @@ class VehicleController extends Controller
      * Returns 404 if the vehicle is not publicly visible (withdrawn, sold, or deleted).
      * Eager-loads activeLot (with auction) + full media gallery.
      */
-    public function show(Vehicle $vehicle): JsonResponse
+    public function show(Request $request, Vehicle $vehicle): JsonResponse
     {
         if (! in_array($vehicle->status, ['available', 'in_auction'])) {
             return $this->error('Vehicle not found.', 404, 'not_found');
+        }
+
+        $user = $request->user();
+        $isPrivileged = $user && ($user->hasRole('dealer') || $user->hasRole('admin'));
+        if (! $isPrivileged) {
+            $vehicle->load('seller.dealerProfile');
+            $sellerProfile = $vehicle->seller?->dealerProfile;
+            if ($sellerProfile && in_array($sellerProfile->dealer_classification, ['maryland_wholesale', 'out_of_state_wholesale'], true)) {
+                return $this->error('Vehicle not found.', 404, 'not_found');
+            }
         }
 
         $vehicle->load(['activeLot.auction', 'media']);

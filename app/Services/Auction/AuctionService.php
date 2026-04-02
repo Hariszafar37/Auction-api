@@ -145,7 +145,7 @@ class AuctionService
 
     // ─── Lot management (admin) ──────────────────────────────────────────────────
 
-    public function addLot(Auction $auction, Vehicle $vehicle, array $data): AuctionLot
+    public function addLot(Auction $auction, Vehicle $vehicle, array $data, ?User $requestingUser = null): AuctionLot
     {
         if (! in_array($auction->status, [AuctionStatus::Draft, AuctionStatus::Scheduled])) {
             throw ValidationException::withMessages([
@@ -159,7 +159,62 @@ class AuctionService
             ]);
         }
 
-        return DB::transaction(function () use ($auction, $vehicle, $data): AuctionLot {
+        // ── Load seller for compliance checks ────────────────────────────────────
+        $seller = $vehicle->seller()->with('dealerProfile')->first();
+        $isAdmin = $requestingUser && $requestingUser->hasRole('admin');
+
+        if (! $isAdmin) {
+            // POA check: individual sellers (role:seller, not role:dealer) need an approved POA
+            if ($seller && $seller->hasRole('seller') && ! $seller->hasRole('dealer')) {
+                if (! $seller->hasApprovedPoa()) {
+                    throw ValidationException::withMessages([
+                        'poa' => ['An approved Power of Attorney is required before submitting a vehicle to auction.'],
+                    ]);
+                }
+            }
+
+            // Dealer classification compliance
+            if ($seller && $seller->dealerProfile) {
+                $cls = $seller->dealerProfile->dealer_classification;
+
+                if ($cls === 'maryland_retail') {
+                    if (! $vehicle->title_received) {
+                        throw ValidationException::withMessages([
+                            'vehicle' => ['Maryland Retail: title must be received before listing.'],
+                        ]);
+                    }
+                    if (! $seller->dealerProfile->inspection_passed) {
+                        throw ValidationException::withMessages([
+                            'vehicle' => ['Maryland Retail: vehicle inspection must be passed before listing.'],
+                        ]);
+                    }
+                } elseif ($cls === 'out_of_state_retail') {
+                    if (! $vehicle->title_received) {
+                        throw ValidationException::withMessages([
+                            'vehicle' => ['Out-of-State Retail: title must be received before listing.'],
+                        ]);
+                    }
+                    if (! $seller->dealerProfile->bill_of_sale_received) {
+                        throw ValidationException::withMessages([
+                            'vehicle' => ['Out-of-State Retail: bill of sale must be received before listing.'],
+                        ]);
+                    }
+                }
+                // Wholesale: no pre-listing compliance required
+            }
+        }
+
+        // ── Determine dealer_only flag ────────────────────────────────────────────
+        $dealerOnly = false;
+        if ($seller && $seller->dealerProfile) {
+            if ($seller->dealerProfile->can_sell_to_public === false) {
+                $dealerOnly = true;
+            } elseif (in_array($seller->dealerProfile->dealer_classification, ['maryland_wholesale', 'out_of_state_wholesale'], true)) {
+                $dealerOnly = true;
+            }
+        }
+
+        return DB::transaction(function () use ($auction, $vehicle, $data, $dealerOnly): AuctionLot {
             // Re-check availability inside the transaction to prevent a race condition
             // where two concurrent requests both pass the check above simultaneously.
             if (! $vehicle->fresh()->isAvailable()) {
@@ -179,6 +234,7 @@ class AuctionService
                 'reserve_price'            => $data['reserve_price'] ?? null,
                 'countdown_seconds'        => $data['countdown_seconds'] ?? 30,
                 'requires_seller_approval' => $data['requires_seller_approval'] ?? false,
+                'dealer_only'              => $dealerOnly,
                 'status'                   => LotStatus::Pending,
             ]);
 

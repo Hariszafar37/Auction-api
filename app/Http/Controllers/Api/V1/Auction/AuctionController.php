@@ -155,6 +155,10 @@ class AuctionController extends Controller
             ->allowedFilters([AllowedFilter::exact('status')])
             ->allowedSorts(['lot_number', 'current_bid', 'status'])
             ->with('vehicle.media')
+            ->when(
+                ! $request->user()?->hasRole('dealer') && ! $request->user()?->hasRole('admin'),
+                fn ($q) => $q->where('dealer_only', false)
+            )
             ->paginate($request->integer('per_page', 20))
             ->appends($request->query());
 
@@ -173,10 +177,15 @@ class AuctionController extends Controller
      * GET /api/v1/auctions/{auction}/lots/{lot}
      * Public — single lot detail.
      */
-    public function showLot(Auction $auction, \App\Models\AuctionLot $lot): JsonResponse
+    public function showLot(Request $request, Auction $auction, \App\Models\AuctionLot $lot): JsonResponse
     {
         if ($lot->auction_id !== $auction->id) {
             return $this->error('Lot does not belong to this auction.', 404, 'not_found');
+        }
+
+        $user = $request->user();
+        if ($lot->dealer_only && ! $user?->hasRole('dealer') && ! $user?->hasRole('admin')) {
+            return $this->error('Lot not found.', 404, 'not_found');
         }
 
         return $this->success(

@@ -247,6 +247,7 @@ Route::prefix('v1')->group(function () {
             // Government accounts
             Route::prefix('government')->name('government.')->group(function () {
                 Route::get('/pending',           [AdminGovController::class, 'pending'])->name('pending');
+                Route::get('/{user}',            [AdminGovController::class, 'show'])->name('show');
                 Route::post('/',                 [AdminGovController::class, 'store'])->name('store');
                 Route::post('/{user}/invite',    [AdminGovController::class, 'sendInvite'])->name('invite');
                 Route::post('/{user}/approve',   [AdminGovController::class, 'approve'])->name('approve');

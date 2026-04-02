@@ -111,8 +111,21 @@ class DealerVehicleController extends Controller
      */
     public function submitToAuction(Request $request, Vehicle $vehicle): JsonResponse
     {
-        if ($vehicle->seller_id !== $request->user()->id) {
+        $user = $request->user();
+
+        if ($vehicle->seller_id !== $user->id) {
             return $this->error('Vehicle not found.', 404, 'not_found');
+        }
+
+        // Individual sellers (role:seller, not role:dealer) must have an approved POA
+        if ($user->hasRole('seller') && ! $user->hasRole('dealer')) {
+            if (! $user->hasApprovedPoa()) {
+                return $this->error(
+                    'An approved Power of Attorney is required before submitting vehicles to auction.',
+                    403,
+                    'poa_required'
+                );
+            }
         }
 
         $data = $request->validate([
@@ -124,7 +137,7 @@ class DealerVehicleController extends Controller
         $auction = Auction::findOrFail($data['auction_id']);
 
         try {
-            $lot = $this->auctionService->addLot($auction, $vehicle, $data);
+            $lot = $this->auctionService->addLot($auction, $vehicle, $data, $user);
         } catch (ValidationException $e) {
             return $this->error($e->getMessage(), 422, 'submit_failed', $e->errors());
         }

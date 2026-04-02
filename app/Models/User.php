@@ -190,4 +190,23 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->status !== 'active';
     }
+
+    // ── Compliance helpers ────────────────────────────────────────────────────
+
+    /**
+     * Whether the user has an admin-approved Power of Attorney on file.
+     */
+    public function hasApprovedPoa(): bool
+    {
+        return $this->powerOfAttorneys()->where('status', 'approved')->exists();
+    }
+
+    /**
+     * Whether the user's dealer classification is wholesale (any variant).
+     */
+    public function isWholesaleDealer(): bool
+    {
+        $classification = $this->dealerProfile?->dealer_classification;
+        return in_array($classification, ['maryland_wholesale', 'out_of_state_wholesale'], true);
+    }
 }

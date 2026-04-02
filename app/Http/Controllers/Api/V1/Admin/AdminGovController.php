@@ -86,12 +86,28 @@ class AdminGovController extends Controller
      */
     public function pending(): JsonResponse
     {
-        $profiles = GovProfile::where('approval_status', 'pending')
-            ->with('user')
+        $users = \App\Models\User::whereHas('govProfile', fn ($q) => $q->where('approval_status', 'pending'))
+            ->with('govProfile')
             ->latest()
             ->get();
 
-        return $this->success($profiles);
+        return $this->success($users->map(fn ($user) => $this->formatGovUser($user)));
+    }
+
+    /**
+     * GET /api/v1/admin/government/{user}
+     *
+     * Return a single government account detail.
+     */
+    public function show(User $user): JsonResponse
+    {
+        if ($user->account_type !== 'government') {
+            return $this->error('User is not a government account.', 404, 'not_found');
+        }
+
+        $user->load('govProfile');
+
+        return $this->success($this->formatGovUser($user));
     }
 
     /**
@@ -113,7 +129,8 @@ class AdminGovController extends Controller
 
         $user->update(['status' => 'active']);
 
-        return $this->success(null, 'Government account approved.');
+        $user->load('govProfile');
+        return $this->success($this->formatGovUser($user), 'Government account approved.');
     }
 
     /**
@@ -122,8 +139,10 @@ class AdminGovController extends Controller
     public function reject(User $user, Request $request): JsonResponse
     {
         $request->validate([
-            'rejection_reason' => ['required', 'string'],
+            'rejection_reason' => ['required_without:reason', 'nullable', 'string'],
+            'reason'           => ['required_without:rejection_reason', 'nullable', 'string'],
         ]);
+        $rejectionReason = $request->rejection_reason ?? $request->reason;
 
         $profile = $user->govProfile;
 
@@ -133,13 +152,45 @@ class AdminGovController extends Controller
 
         $profile->update([
             'approval_status'  => 'rejected',
-            'rejection_reason' => $request->rejection_reason,
+            'rejection_reason' => $rejectionReason,
             'reviewed_by'      => auth()->id(),
             'reviewed_at'      => now(),
         ]);
 
         $user->update(['status' => 'suspended']);
 
-        return $this->success(null, 'Government account rejected.');
+        $user->load('govProfile');
+        return $this->success($this->formatGovUser($user), 'Government account rejected.');
+    }
+
+    private function formatGovUser(\App\Models\User $user): array
+    {
+        $profile = $user->govProfile;
+        return [
+            'id'               => $user->id,
+            'name'             => $user->name,
+            'email'            => $user->email,
+            'account_type'     => $user->account_type,
+            'created_at'       => $user->created_at->toIso8601String(),
+            'government_profile' => $profile ? [
+                'entity_name'           => $profile->entity_name,
+                'entity_subtype'        => $profile->entity_subtype,
+                'department_division'   => $profile->department_division,
+                'point_of_contact_name' => $profile->point_of_contact_name,
+                'contact_title'         => $profile->contact_title,
+                'phone'                 => $profile->phone,
+                'office_phone'          => $profile->office_phone,
+                'address'               => $profile->address,
+                'city'                  => $profile->city,
+                'state'                 => $profile->state,
+                'zip'                   => $profile->zip,
+                'approval_status'       => $profile->approval_status,
+                'rejection_reason'      => $profile->rejection_reason,
+                'admin_notes'           => $profile->admin_notes,
+                'invite_sent_at'        => $profile->invite_sent_at?->toIso8601String(),
+                'invite_accepted_at'    => $profile->invite_accepted_at?->toIso8601String(),
+                'reviewed_at'           => $profile->reviewed_at?->toIso8601String(),
+            ] : null,
+        ];
     }
 }

@@ -163,6 +163,13 @@ class BiddingService
             $errors['amount'] = ["Minimum bid is \${$minBid}."];
         }
 
+        // Dealer-only lot: only users with dealer or admin role may bid
+        if ($lot->dealer_only) {
+            if (! $user->hasRole('dealer') && ! $user->hasRole('admin')) {
+                $errors['lot'] = ['This lot is available to approved dealers only.'];
+            }
+        }
+
         if (! empty($errors)) {
             throw ValidationException::withMessages($errors);
         }
@@ -197,6 +204,13 @@ class BiddingService
 
         if ($existing && $maxAmount <= $existing->max_amount) {
             $errors['max_amount'] = ['New max bid must be higher than your current max bid.'];
+        }
+
+        // Dealer-only lot: only users with dealer or admin role may bid
+        if ($lot->dealer_only) {
+            if (! $user->hasRole('dealer') && ! $user->hasRole('admin')) {
+                $errors['lot'] = ['This lot is available to approved dealers only.'];
+            }
         }
 
         if (! empty($errors)) {
