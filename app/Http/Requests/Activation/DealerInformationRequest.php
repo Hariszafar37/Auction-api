@@ -13,6 +13,10 @@ class DealerInformationRequest extends FormRequest
 
     public function rules(): array
     {
+        // Retail dealers are required to provide a salesman license number.
+        // Determined from dealer_classification (e.g. maryland_retail, out_of_state_retail).
+        $isRetail = str_contains($this->input('dealer_classification', ''), 'retail');
+
         return [
             'company_name'              => ['required', 'string', 'max:255'],
             'dba_name'                  => ['nullable', 'string', 'max:255'],
@@ -29,10 +33,12 @@ class DealerInformationRequest extends FormRequest
             // Nullable in DB for backward compat with existing rows; frontend treats as required.
             'dealer_state'              => ['nullable', 'string', 'max:100'],
             'dealer_zip_code'           => ['required', 'string', 'max:20'],
-            'dealer_type'               => ['required', 'in:retail,wholesale'],
+            'dealer_type'               => ['nullable', 'in:retail,wholesale'],
             'dealer_classification'     => ['required', 'in:maryland_retail,maryland_wholesale,out_of_state_retail,out_of_state_wholesale'],
             'salesman_name'             => ['nullable', 'string', 'max:255'],
-            'salesman_license_number'   => ['nullable', 'string', 'max:100'],
+            'salesman_license_number'   => $isRetail
+                ? ['required', 'string', 'max:100']
+                : ['nullable', 'string', 'max:100'],
             'salesman_license_state'    => ['nullable', 'string', 'max:100'],
             'salesman_license_expiry'   => ['nullable', 'date'],
         ];
@@ -41,7 +47,8 @@ class DealerInformationRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'license_expiration_date.after' => 'Dealer license must not be expired.',
+            'license_expiration_date.after'       => 'Dealer license must not be expired.',
+            'salesman_license_number.required'     => 'Salesman license number is required for retail dealers.',
         ];
     }
 }

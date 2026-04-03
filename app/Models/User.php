@@ -188,6 +188,11 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isActivationRequired(): bool
     {
+        // Government accounts are admin-controlled and never go through the self-activation wizard.
+        if ($this->account_type === 'government') {
+            return false;
+        }
+
         return $this->status !== 'active';
     }
 

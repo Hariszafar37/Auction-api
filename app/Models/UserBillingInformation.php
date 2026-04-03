@@ -14,6 +14,7 @@ class UserBillingInformation extends Model
         'billing_address',
         'billing_country',
         'billing_city',
+        'billing_state',
         'billing_zip_postal_code',
         'payment_method_added',
     ];
