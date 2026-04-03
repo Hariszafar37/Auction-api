@@ -63,10 +63,33 @@ it('returns 422 when token query param is missing', function () {
 
 // ── Accept invite ─────────────────────────────────────────────────────────────
 
+it('returns 422 when compliance checkboxes are missing on acceptance', function () {
+    makeInvitedGovUser('compliance-missing-token');
+
+    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'compliance-missing-token'])
+        ->assertStatus(422);
+});
+
+it('returns 422 when compliance checkboxes are false on acceptance', function () {
+    makeInvitedGovUser('compliance-false-token');
+
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'compliance-false-token',
+        'agree_bidder_terms'       => false,
+        'agree_ecomm_consent'      => false,
+        'agree_accuracy_confirmed' => false,
+    ])->assertStatus(422);
+});
+
 it('accepts invite, marks email verified, and advances status to pending_password', function () {
     [$user, $profile] = makeInvitedGovUser('accept-token-123');
 
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'accept-token-123'])
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'accept-token-123',
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])
         ->assertOk()
         ->assertJsonPath('data.email', 'gov@example.gov');
 
@@ -80,7 +103,12 @@ it('accepts invite, marks email verified, and advances status to pending_passwor
 });
 
 it('returns 404 for invalid token on acceptance', function () {
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'does-not-exist'])
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'does-not-exist',
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])
         ->assertStatus(404)
         ->assertJsonPath('code', 'invalid_token');
 });
@@ -93,11 +121,17 @@ it('returns 422 when token body param is missing', function () {
 it('consumed token cannot be used again after acceptance', function () {
     makeInvitedGovUser('one-time-token');
 
+    $complianceFields = [
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ];
+
     // First acceptance succeeds
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'one-time-token'])->assertOk();
+    $this->postJson('/api/v1/auth/accept-invite', array_merge(['token' => 'one-time-token'], $complianceFields))->assertOk();
 
     // Second attempt fails — token was cleared
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'one-time-token'])
+    $this->postJson('/api/v1/auth/accept-invite', array_merge(['token' => 'one-time-token'], $complianceFields))
         ->assertStatus(404)
         ->assertJsonPath('code', 'invalid_token');
 });
@@ -106,7 +140,12 @@ it('after acceptance, set-password works using email from invite', function () {
     [$user] = makeInvitedGovUser('flow-token-abc');
 
     // Step 1: accept invite
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'flow-token-abc'])->assertOk();
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'flow-token-abc',
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])->assertOk();
 
     // Step 2: set password using existing endpoint
     $this->postJson('/api/v1/auth/set-password', [
@@ -124,7 +163,12 @@ it('gov user login after set-password does not require activation wizard', funct
     [$user] = makeInvitedGovUser('login-flow-token');
 
     // Complete invite + set-password flow
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'login-flow-token'])->assertOk();
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'login-flow-token',
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])->assertOk();
     $this->postJson('/api/v1/auth/set-password', [
         'email'                 => 'gov@example.gov',
         'password'              => 'SecurePass123!',
@@ -143,7 +187,12 @@ it('gov user login after set-password does not require activation wizard', funct
 it('gov pending_activation user has activation_status pending_approval in /me response', function () {
     [$user] = makeInvitedGovUser('status-token');
 
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'status-token'])->assertOk();
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'status-token',
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])->assertOk();
     $this->postJson('/api/v1/auth/set-password', [
         'email'                 => 'gov@example.gov',
         'password'              => 'SecurePass123!',
@@ -162,7 +211,12 @@ it('gov pending_activation user has activation_status pending_approval in /me re
 it('approved gov user login has no activation redirect', function () {
     [$user] = makeInvitedGovUser('approved-flow-token');
 
-    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'approved-flow-token'])->assertOk();
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'approved-flow-token',
+        'agree_bidder_terms'       => true,
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])->assertOk();
     $this->postJson('/api/v1/auth/set-password', [
         'email'                 => 'gov@example.gov',
         'password'              => 'SecurePass123!',
