@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleMediaController;
 use App\Http\Controllers\Api\V1\Seller\SellerApplicationController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
 use Illuminate\Support\Facades\Route;
@@ -161,6 +162,18 @@ Route::prefix('v1')->group(function () {
             Route::post('/{vehicle}/media',                  [DealerVehicleMediaController::class, 'store'])->name('media.store');
             Route::patch('/{vehicle}/media/reorder',         [DealerVehicleMediaController::class, 'reorder'])->name('media.reorder');
             Route::delete('/{vehicle}/media/{media}',        [DealerVehicleMediaController::class, 'destroy'])->name('media.destroy');
+        });
+
+        /*
+        |----------------------------------------------------------------------
+        | Notifications
+        |----------------------------------------------------------------------
+        */
+        Route::prefix('notifications')->name('notifications.')->group(function () {
+            Route::get('/',             [NotificationController::class, 'index'])->name('index');
+            Route::get('/unread-count', [NotificationController::class, 'unreadCount'])->name('unread-count');
+            Route::post('/read-all',    [NotificationController::class, 'markAllRead'])->name('read-all');
+            Route::post('/{id}/read',   [NotificationController::class, 'markRead'])->name('read');
         });
 
         /*
