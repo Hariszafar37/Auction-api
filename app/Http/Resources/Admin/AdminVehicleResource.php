@@ -26,6 +26,7 @@ class AdminVehicleResource extends JsonResource
             'condition_notes'  => $this->condition_notes,
             'has_title'        => $this->has_title,
             'title_state'      => $this->title_state,
+            'title_received'   => (bool) $this->title_received,
             'status'           => $this->status,
             'created_at'       => $this->created_at->toIso8601String(),
             'seller'           => $this->whenLoaded('seller', fn () => [

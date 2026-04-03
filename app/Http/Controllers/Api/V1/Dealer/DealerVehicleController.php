@@ -117,6 +117,11 @@ class DealerVehicleController extends Controller
             return $this->error('Vehicle not found.', 404, 'not_found');
         }
 
+        // Account must be active — consistent with bid-side status enforcement in BidController
+        if ($user->status !== 'active') {
+            return $this->error('Your account must be active to submit vehicles to auction.', 403, 'account_inactive');
+        }
+
         // All seller-enabled accounts (individual, dealer, business) need an approved POA
         if ($user->hasSellIntent() && ! $user->hasApprovedPoa()) {
             return $this->error(

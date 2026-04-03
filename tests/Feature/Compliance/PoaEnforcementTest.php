@@ -242,6 +242,63 @@ it('approved POA unlocks business seller submission', function () {
         ->assertStatus(201);
 });
 
+// ══ ACCOUNT STATUS ENFORCEMENT ══════════════════════════════════════════════
+
+it('pending_activation dealer cannot submit vehicle to auction', function () {
+    $dealer = User::factory()->create([
+        'status'         => 'pending_activation',
+        'account_type'   => 'dealer',
+        'account_intent' => 'buyer_and_seller',
+    ]);
+    $dealer->assignRole('dealer');
+    DealerProfile::create([
+        'user_id'         => $dealer->id,
+        'company_name'    => 'Test Motors',
+        'dealer_license'  => 'DLR-' . rand(100, 999),
+        'approval_status' => 'approved',
+    ]);
+    // POA is approved so the POA gate does not fire first — status check must fire instead
+    grantApprovedPoa($dealer);
+
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $dealer->id, 'status' => 'available']);
+
+    $this->actingAs($dealer, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'account_inactive');
+});
+
+it('suspended dealer cannot submit vehicle to auction', function () {
+    $dealer = User::factory()->create([
+        'status'         => 'suspended',
+        'account_type'   => 'dealer',
+        'account_intent' => 'buyer_and_seller',
+    ]);
+    $dealer->assignRole('dealer');
+    DealerProfile::create([
+        'user_id'         => $dealer->id,
+        'company_name'    => 'Test Motors',
+        'dealer_license'  => 'DLR-' . rand(100, 999),
+        'approval_status' => 'approved',
+    ]);
+    grantApprovedPoa($dealer);
+
+    $auction = makePoaAuction();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $dealer->id, 'status' => 'available']);
+
+    $this->actingAs($dealer, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => $auction->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'account_inactive');
+});
+
 // ══ BUYER ACCESS UNAFFECTED ═══════════════════════════════════════════════
 
 it('pure buyer can bid without any POA — buyer flow is not blocked', function () {
