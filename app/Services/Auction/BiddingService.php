@@ -13,6 +13,7 @@ use App\Models\Bid;
 use App\Models\BidIncrement;
 use App\Models\ProxyBid;
 use App\Models\User;
+use App\Notifications\OutbidEmailNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -75,11 +76,12 @@ class BiddingService
             // Broadcast new bid to all watchers
             broadcast(new BidPlaced($lot, $bid));
 
-            // Notify previous winner they've been outbid
+            // Notify previous winner they've been outbid (real-time broadcast + email)
             if ($previousWinnerId && $previousWinnerId !== $user->id) {
                 $outbidUser = User::find($previousWinnerId);
                 if ($outbidUser) {
                     broadcast(new OutbidNotification($lot, $outbidUser));
+                    $outbidUser->notify(new OutbidEmailNotification($lot, $amount));
                 }
             }
 
@@ -123,14 +125,16 @@ class BiddingService
         // Broadcast the resulting bid
         broadcast(new BidPlaced($lot, $bid));
 
-        // If someone was outbid by proxy resolution, notify them
+        // If someone was outbid by proxy resolution, notify them (real-time broadcast + email)
         $outbidUser = $bid->getAttribute('_outbid_user');
         if ($outbidUser) {
             broadcast(new OutbidNotification($lot, $outbidUser));
+            $outbidUser->notify(new OutbidEmailNotification($lot, $lot->current_bid));
         } elseif ($previousWinnerId && $previousWinnerId !== $lot->current_winner_id) {
             $outbid = User::find($previousWinnerId);
             if ($outbid) {
                 broadcast(new OutbidNotification($lot, $outbid));
+                $outbid->notify(new OutbidEmailNotification($lot, $lot->current_bid));
             }
         }
 

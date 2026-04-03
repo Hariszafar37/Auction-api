@@ -10,6 +10,8 @@ use App\Http\Requests\Admin\UpdateUserRoleRequest;
 use App\Http\Requests\Admin\UpdateUserStatusRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Notifications\AccountApprovedNotification;
+use App\Notifications\AccountRejectedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -145,6 +147,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'active']);
+        $user->notify(new AccountApprovedNotification('dealer'));
 
         return $this->success(
             new UserResource($user->fresh('dealerProfile')),
@@ -171,6 +174,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'suspended']);
+        $user->notify(new AccountRejectedNotification($request->reason, 'dealer'));
 
         return $this->success(
             new UserResource($user->fresh('dealerProfile')),
@@ -224,6 +228,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'active']);
+        $user->notify(new AccountApprovedNotification('business'));
 
         return $this->success(
             new UserResource($user->fresh('businessProfile')),
@@ -250,6 +255,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'suspended']);
+        $user->notify(new AccountRejectedNotification($request->reason, 'business'));
 
         return $this->success(
             new UserResource($user->fresh('businessProfile')),
@@ -321,6 +327,7 @@ class AdminUserController extends Controller
 
         // Update account_intent to reflect selling capability
         $user->update(['account_intent' => 'buyer_and_seller']);
+        $user->notify(new AccountApprovedNotification('seller'));
 
         return $this->success(
             new UserResource($user->fresh('sellerProfile')),
@@ -350,6 +357,7 @@ class AdminUserController extends Controller
         ]);
 
         // User remains active as a buyer — no status change
+        $user->notify(new AccountRejectedNotification($request->reason, 'seller'));
 
         return $this->success(
             new UserResource($user->fresh('sellerProfile')),

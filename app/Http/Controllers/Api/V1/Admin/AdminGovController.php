@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateGovProfileRequest;
 use App\Models\GovProfile;
 use App\Models\User;
+use App\Notifications\AccountApprovedNotification;
+use App\Notifications\AccountRejectedNotification;
 use App\Notifications\GovAccountInvite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -128,6 +130,7 @@ class AdminGovController extends Controller
         ]);
 
         $user->update(['status' => 'active']);
+        $user->notify(new AccountApprovedNotification('government'));
 
         $user->load('govProfile');
         return $this->success($this->formatGovUser($user), 'Government account approved.');
@@ -158,6 +161,7 @@ class AdminGovController extends Controller
         ]);
 
         $user->update(['status' => 'suspended']);
+        $user->notify(new AccountRejectedNotification($rejectionReason, 'government'));
 
         $user->load('govProfile');
         return $this->success($this->formatGovUser($user), 'Government account rejected.');
