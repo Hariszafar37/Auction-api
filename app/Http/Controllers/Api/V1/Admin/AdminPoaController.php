@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Events\Account\POAApproved;
+use App\Events\Account\POARejected;
 use App\Http\Controllers\Controller;
 use App\Models\PowerOfAttorney;
 use App\Models\User;
-use App\Notifications\PoaApprovedNotification;
-use App\Notifications\PoaRejectedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -55,7 +55,7 @@ class AdminPoaController extends Controller
             'reviewed_at' => now(),
         ]);
 
-        $user->notify(new PoaApprovedNotification());
+        event(new POAApproved($user, $poa->fresh()));
 
         return $this->success($this->formatPoa($poa->fresh()), 'POA approved.');
     }
@@ -76,7 +76,7 @@ class AdminPoaController extends Controller
             'reviewed_at' => now(),
         ]);
 
-        $user->notify(new PoaRejectedNotification($request->admin_notes));
+        event(new POARejected($user, $poa->fresh(), $request->admin_notes));
 
         return $this->success($this->formatPoa($poa->fresh()), 'POA rejected.');
     }

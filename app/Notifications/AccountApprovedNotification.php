@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\HasBroadcastPayload;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -10,9 +12,9 @@ use Illuminate\Notifications\Notification;
  * Sent to users when their account application is approved by an admin.
  * Covers dealer, business, individual seller, and government account types.
  */
-class AccountApprovedNotification extends Notification
+class AccountApprovedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, HasBroadcastPayload;
 
     /** @param string $context 'dealer'|'business'|'seller'|'government' */
     public function __construct(
@@ -21,7 +23,7 @@ class AccountApprovedNotification extends Notification
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
@@ -77,17 +79,22 @@ class AccountApprovedNotification extends Notification
 
     public function toDatabase(mixed $notifiable): array
     {
-        $labels = [
-            'dealer'     => 'Dealer account approved',
-            'business'   => 'Business account approved',
-            'seller'     => 'Seller application approved',
-            'government' => 'Government account approved',
-        ];
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+
+        [$title, $message, $actionUrl] = match ($this->context) {
+            'dealer'     => ['Dealer account approved', 'Your dealer account is now active. You can submit vehicles to auction.', "{$frontendUrl}/dashboard"],
+            'business'   => ['Business account approved', 'Your business account is now active.', "{$frontendUrl}/dashboard"],
+            'seller'     => ['Seller application approved', 'You are now approved to sell on the platform.', "{$frontendUrl}/vehicles/add"],
+            'government' => ['Government account approved', 'Your government account is now active.', "{$frontendUrl}/dashboard"],
+            default      => ['Account approved', 'Your account has been approved.', "{$frontendUrl}/dashboard"],
+        };
 
         return [
-            'type'    => 'account_approved',
-            'context' => $this->context,
-            'message' => $labels[$this->context] ?? 'Account approved',
+            'type'       => 'account_approved',
+            'title'      => $title,
+            'message'    => $message,
+            'action_url' => $actionUrl,
+            'meta'       => ['context' => $this->context],
         ];
     }
 }

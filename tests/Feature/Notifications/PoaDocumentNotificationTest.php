@@ -68,7 +68,7 @@ it('rejecting a POA sends PoaRejectedNotification with admin notes', function ()
         ->assertStatus(200);
 
     Notification::assertSentTo($user, PoaRejectedNotification::class, function ($n) {
-        return $n->toDatabase($n)['notes'] === 'Signature does not match records.';
+        return ($n->toDatabase($n)['meta']['admin_notes'] ?? null) === 'Signature does not match records.';
     });
 });
 
@@ -96,7 +96,7 @@ it('updating a document status sends DocumentStatusUpdatedNotification', functio
         ->assertStatus(200);
 
     Notification::assertSentTo($user, DocumentStatusUpdatedNotification::class, function ($n) {
-        return $n->toDatabase($n)['status'] === 'approved';
+        return ($n->toDatabase($n)['meta']['status'] ?? null) === 'approved';
     });
 });
 
@@ -123,7 +123,7 @@ it('marking document as needs_resubmission sends notification', function () {
 
     Notification::assertSentTo($user, DocumentStatusUpdatedNotification::class, function ($n) {
         $data = $n->toDatabase($n);
-        return $data['status'] === 'needs_resubmission'
-            && $data['admin_notes'] === 'Image is blurry, please re-upload.';
+        return ($data['meta']['status'] ?? null) === 'needs_resubmission'
+            && ($data['meta']['admin_notes'] ?? null) === 'Image is blurry, please re-upload.';
     });
 });

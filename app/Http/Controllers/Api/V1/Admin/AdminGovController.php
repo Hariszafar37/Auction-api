@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Events\Account\AccountApproved;
+use App\Events\Account\AccountRejected;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateGovProfileRequest;
 use App\Models\GovProfile;
 use App\Models\User;
-use App\Notifications\AccountApprovedNotification;
-use App\Notifications\AccountRejectedNotification;
 use App\Notifications\GovAccountInvite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -130,7 +130,7 @@ class AdminGovController extends Controller
         ]);
 
         $user->update(['status' => 'active']);
-        $user->notify(new AccountApprovedNotification('government'));
+        event(new AccountApproved($user, 'government'));
 
         $user->load('govProfile');
         return $this->success($this->formatGovUser($user), 'Government account approved.');
@@ -161,7 +161,7 @@ class AdminGovController extends Controller
         ]);
 
         $user->update(['status' => 'suspended']);
-        $user->notify(new AccountRejectedNotification($rejectionReason, 'government'));
+        event(new AccountRejected($user, 'government', $rejectionReason));
 
         $user->load('govProfile');
         return $this->success($this->formatGovUser($user), 'Government account rejected.');

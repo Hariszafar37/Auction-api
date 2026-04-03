@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Events\Account\DocumentStatusUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateDocumentStatusRequest;
 use App\Models\UserDocument;
-use App\Notifications\DocumentStatusUpdatedNotification;
 use Illuminate\Http\JsonResponse;
 
 class AdminDocumentController extends Controller
@@ -24,9 +24,7 @@ class AdminDocumentController extends Controller
             'reviewed_at' => now(),
         ]);
 
-        if ($document->user) {
-            $document->user->notify(new DocumentStatusUpdatedNotification($document->fresh()));
-        }
+        event(new DocumentStatusUpdated($document->fresh()));
 
         return $this->success(
             [

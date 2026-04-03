@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Events\Account\AccountApproved;
+use App\Events\Account\AccountRejected;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\RejectBusinessRequest;
 use App\Http\Requests\Admin\RejectDealerRequest;
@@ -10,8 +12,6 @@ use App\Http\Requests\Admin\UpdateUserRoleRequest;
 use App\Http\Requests\Admin\UpdateUserStatusRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
-use App\Notifications\AccountApprovedNotification;
-use App\Notifications\AccountRejectedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Spatie\QueryBuilder\AllowedFilter;
@@ -147,7 +147,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'active']);
-        $user->notify(new AccountApprovedNotification('dealer'));
+        event(new AccountApproved($user, 'dealer'));
 
         return $this->success(
             new UserResource($user->fresh('dealerProfile')),
@@ -174,7 +174,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'suspended']);
-        $user->notify(new AccountRejectedNotification($request->reason, 'dealer'));
+        event(new AccountRejected($user, 'dealer', $request->reason));
 
         return $this->success(
             new UserResource($user->fresh('dealerProfile')),
@@ -228,7 +228,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'active']);
-        $user->notify(new AccountApprovedNotification('business'));
+        event(new AccountApproved($user, 'business'));
 
         return $this->success(
             new UserResource($user->fresh('businessProfile')),
@@ -255,7 +255,7 @@ class AdminUserController extends Controller
         ]);
 
         $user->update(['status' => 'suspended']);
-        $user->notify(new AccountRejectedNotification($request->reason, 'business'));
+        event(new AccountRejected($user, 'business', $request->reason));
 
         return $this->success(
             new UserResource($user->fresh('businessProfile')),
@@ -327,7 +327,7 @@ class AdminUserController extends Controller
 
         // Update account_intent to reflect selling capability
         $user->update(['account_intent' => 'buyer_and_seller']);
-        $user->notify(new AccountApprovedNotification('seller'));
+        event(new AccountApproved($user, 'seller'));
 
         return $this->success(
             new UserResource($user->fresh('sellerProfile')),
@@ -357,7 +357,7 @@ class AdminUserController extends Controller
         ]);
 
         // User remains active as a buyer — no status change
-        $user->notify(new AccountRejectedNotification($request->reason, 'seller'));
+        event(new AccountRejected($user, 'seller', $request->reason));
 
         return $this->success(
             new UserResource($user->fresh('sellerProfile')),

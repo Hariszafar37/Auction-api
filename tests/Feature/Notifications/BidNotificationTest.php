@@ -76,7 +76,7 @@ it('outbid user receives OutbidEmailNotification when outbid on a lot', function
     // First bidder should receive the outbid notification
     Notification::assertSentTo($firstBidder, OutbidEmailNotification::class, function ($n) {
         $data = $n->toDatabase($n);
-        return $data['type'] === 'outbid' && $data['new_bid'] === 1100;
+        return $data['type'] === 'outbid' && ($data['meta']['new_bid'] ?? null) === 1100;
     });
 });
 
