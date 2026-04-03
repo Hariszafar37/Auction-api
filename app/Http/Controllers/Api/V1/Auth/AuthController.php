@@ -9,6 +9,7 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Requests\Auth\SetPasswordRequest;
 use App\Http\Resources\UserResource;
+use App\Models\GovProfile;
 use App\Models\User;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Events\Registered;
@@ -245,5 +246,68 @@ class AuthController extends Controller
         }
 
         return $this->success(message: __($status));
+    }
+
+    /**
+     * GET /api/v1/auth/accept-invite?token=...
+     *
+     * Validate a government account invite token and return the associated
+     * email so the frontend can pre-fill the set-password form.
+     */
+    public function validateInvite(Request $request): JsonResponse
+    {
+        $token = $request->query('token');
+
+        if (! $token) {
+            return $this->error('Invite token is required.', 422, 'token_required');
+        }
+
+        $profile = GovProfile::where('invite_token', $token)->first();
+
+        if (! $profile) {
+            return $this->error('This invite link is invalid or has already been used.', 404, 'invalid_token');
+        }
+
+        $user = $profile->user;
+
+        return $this->success([
+            'email'       => $user->email,
+            'entity_name' => $profile->entity_name,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/auth/accept-invite
+     *
+     * Accept a government account invitation: marks email as verified and
+     * advances the user to pending_password status so they can set a password.
+     */
+    public function acceptInvite(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+        ]);
+
+        $profile = GovProfile::where('invite_token', $request->token)->first();
+
+        if (! $profile) {
+            return $this->error('This invite link is invalid or has already been used.', 404, 'invalid_token');
+        }
+
+        $user = $profile->user;
+
+        $user->update([
+            'email_verified_at' => $user->email_verified_at ?? now(),
+            'status'            => 'pending_password',
+        ]);
+
+        $profile->update([
+            'invite_accepted_at' => now(),
+            'invite_token'       => null,
+        ]);
+
+        return $this->success([
+            'email' => $user->email,
+        ], 'Invitation accepted. Please set your password.');
     }
 }

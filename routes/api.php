@@ -49,6 +49,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/set-password',        [AuthController::class, 'setPassword'])->name('set-password');
         Route::post('/password/forgot',     [AuthController::class, 'forgotPassword'])->name('password.forgot');
         Route::post('/password/reset',      [AuthController::class, 'resetPassword'])->name('password.reset');
+        // Government account invite acceptance (unauthenticated — user has no credentials yet)
+        Route::get('/accept-invite',        [AuthController::class, 'validateInvite'])->name('invite.validate');
+        Route::post('/accept-invite',       [AuthController::class, 'acceptInvite'])->name('invite.accept');
     });
 
     // Signed verification URL — must not be nested inside auth. prefix (Laravel email verification requirement)
@@ -237,7 +240,10 @@ Route::prefix('v1')->group(function () {
                 Route::delete('/{vehicle}/media/{media}',            [AdminVehicleMediaController::class, 'destroy'])->name('media.destroy');
             });
 
-            // POA admin review
+            // POA admin review — global queue
+            Route::get('/poa',                    [AdminPoaController::class, 'indexAll'])->name('poa.index');
+
+            // POA admin review — per-user
             Route::prefix('users/{user}/poa')->name('users.poa.')->group(function () {
                 Route::get('/',                   [AdminPoaController::class, 'index'])->name('index');
                 Route::post('/{poa}/approve',     [AdminPoaController::class, 'approve'])->name('approve');

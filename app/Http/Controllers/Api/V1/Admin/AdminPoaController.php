@@ -7,9 +7,29 @@ use App\Models\PowerOfAttorney;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class AdminPoaController extends Controller
 {
+    /**
+     * GET /api/v1/admin/poa
+     *
+     * List all POA records across all users, with optional status filter.
+     * Used by the admin POA review queue.
+     */
+    public function indexAll(Request $request): JsonResponse
+    {
+        $query = PowerOfAttorney::with('user')->latest();
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $poas = $query->get();
+
+        return $this->success($poas->map(fn ($p) => $this->formatPoaWithUser($p))->values());
+    }
+
     /**
      * GET /api/v1/admin/users/{user}/poa
      *
@@ -55,7 +75,7 @@ class AdminPoaController extends Controller
         return $this->success($this->formatPoa($poa->fresh()), 'POA rejected.');
     }
 
-    // ── Helper ───────────────────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────────
 
     private function formatPoa(PowerOfAttorney $poa): array
     {
@@ -65,6 +85,7 @@ class AdminPoaController extends Controller
             'type'                 => $poa->type,
             'status'               => $poa->status,
             'file_path'            => $poa->file_path,
+            'file_url'             => $poa->file_path ? Storage::url($poa->file_path) : null,
             'signer_printed_name'  => $poa->signer_printed_name,
             'esigned_at'           => $poa->esigned_at?->toIso8601String(),
             'admin_notes'          => $poa->admin_notes,
@@ -72,5 +93,18 @@ class AdminPoaController extends Controller
             'reviewed_at'          => $poa->reviewed_at?->toIso8601String(),
             'created_at'           => $poa->created_at->toIso8601String(),
         ];
+    }
+
+    private function formatPoaWithUser(PowerOfAttorney $poa): array
+    {
+        $data         = $this->formatPoa($poa);
+        $data['user'] = $poa->user ? [
+            'id'             => $poa->user->id,
+            'name'           => $poa->user->name,
+            'email'          => $poa->user->email,
+            'account_type'   => $poa->user->account_type,
+            'account_intent' => $poa->user->account_intent,
+        ] : null;
+        return $data;
     }
 }
