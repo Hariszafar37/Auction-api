@@ -123,6 +123,33 @@ it('saves dealer information for dealer account', function () {
     $this->assertDatabaseHas('user_dealer_information', [
         'user_id'      => $user->id,
         'company_name' => 'Best Cars LLC',
+        // dealer_type must be derived server-side from dealer_classification
+        'dealer_type'  => 'retail',
+    ]);
+});
+
+it('dealer_type is derived as wholesale when classification is maryland_wholesale', function () {
+    $user = makeActivationReadyUser('dealer');
+    $user->update(['account_type' => 'dealer']);
+
+    $this->actingAs($user)->postJson('/api/v1/activation/dealer-information', [
+        'company_name'           => 'Wholesale Co',
+        'owner_name'             => 'Jane Owner',
+        'phone'                  => '555-111-2222',
+        'primary_contact'        => 'jane@wholesale.com',
+        'license_number'         => 'DEALER-002',
+        'license_expiration_date'=> now()->addYears(2)->format('Y-m-d'),
+        'dealer_address'         => '1 Wholesale Rd',
+        'dealer_country'         => 'US',
+        'dealer_city'            => 'Baltimore',
+        'dealer_zip_code'        => '21201',
+        'dealer_classification'  => 'maryland_wholesale',
+        // Wholesale: salesman_license_number not required
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_dealer_information', [
+        'user_id'     => $user->id,
+        'dealer_type' => 'wholesale',
     ]);
 });
 

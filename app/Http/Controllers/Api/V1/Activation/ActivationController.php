@@ -106,33 +106,39 @@ class ActivationController extends Controller
             return $this->error('Account is already fully activated.', 422, 'already_active');
         }
 
+        // Derive dealer_type from classification so the column is always populated,
+        // even when the frontend only submits dealer_classification.
+        $classification = $request->dealer_classification;
+        $dealerType     = str_contains($classification, 'retail') ? 'retail' : 'wholesale';
+
         $user->dealerInformation()->updateOrCreate(
             ['user_id' => $user->id],
-            $request->only([
-                'company_name',
-                'dba_name',
-                'owner_name',
-                'phone',
-                'office_phone',
-                'primary_contact',
-                'license_number',
-                'license_expiration_date',
-                'tax_id_number',
-                'dealer_address',
-                'dealer_country',
-                'dealer_city',
-                'dealer_state',
-                'dealer_zip_code',
-                'dealer_type',
-                'salesman_name',
-                'salesman_license_number',
-                'salesman_license_state',
-                'salesman_license_expiry',
-            ])
+            array_merge(
+                $request->only([
+                    'company_name',
+                    'dba_name',
+                    'owner_name',
+                    'phone',
+                    'office_phone',
+                    'primary_contact',
+                    'license_number',
+                    'license_expiration_date',
+                    'tax_id_number',
+                    'dealer_address',
+                    'dealer_country',
+                    'dealer_city',
+                    'dealer_state',
+                    'dealer_zip_code',
+                    'salesman_name',
+                    'salesman_license_number',
+                    'salesman_license_state',
+                    'salesman_license_expiry',
+                ]),
+                ['dealer_type' => $dealerType]
+            )
         );
 
         // Determine can_sell_to_public and tags_required from dealer_classification
-        $classification   = $request->dealer_classification;
         $canSellToPublic  = in_array($classification, ['maryland_retail', 'out_of_state_retail']);
         $tagsRequired     = $classification === 'maryland_retail';
 

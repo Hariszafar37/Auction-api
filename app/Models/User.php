@@ -179,6 +179,12 @@ class User extends Authenticatable implements MustVerifyEmail
             return 'complete';
         }
 
+        // Government accounts wait for admin approval without going through the wizard,
+        // so activation_completed_at is never set for them. Detect by status alone.
+        if ($this->account_type === 'government' && $this->status === 'pending_activation') {
+            return 'pending_approval';
+        }
+
         if ($this->activation_completed_at && in_array($this->account_type, ['dealer', 'business'])) {
             return 'pending_approval';
         }

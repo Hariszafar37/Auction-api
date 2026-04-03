@@ -140,6 +140,25 @@ it('gov user login after set-password does not require activation wizard', funct
       ->assertJsonPath('data.next_activation_url', '/activation/pending-approval');
 });
 
+it('gov pending_activation user has activation_status pending_approval in /me response', function () {
+    [$user] = makeInvitedGovUser('status-token');
+
+    $this->postJson('/api/v1/auth/accept-invite', ['token' => 'status-token'])->assertOk();
+    $this->postJson('/api/v1/auth/set-password', [
+        'email'                 => 'gov@example.gov',
+        'password'              => 'SecurePass123!',
+        'password_confirmation' => 'SecurePass123!',
+    ])->assertOk();
+
+    $token = $user->createToken('test')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/v1/auth/me')
+        ->assertOk()
+        ->assertJsonPath('data.activation_required', false)
+        ->assertJsonPath('data.activation_status', 'pending_approval');
+});
+
 it('approved gov user login has no activation redirect', function () {
     [$user] = makeInvitedGovUser('approved-flow-token');
 
