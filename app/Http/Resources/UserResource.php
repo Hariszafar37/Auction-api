@@ -81,6 +81,7 @@ class UserResource extends JsonResource
                 'billing_address'         => $this->billingInformation->billing_address,
                 'billing_country'         => $this->billingInformation->billing_country,
                 'billing_city'            => $this->billingInformation->billing_city,
+                'billing_state'           => $this->billingInformation->billing_state,
                 'billing_zip_postal_code' => $this->billingInformation->billing_zip_postal_code,
                 'payment_method_added'    => $this->billingInformation->payment_method_added,
             ] : null),

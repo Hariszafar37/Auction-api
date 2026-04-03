@@ -176,12 +176,21 @@ class AuthController extends Controller
 
         $activationRequired = $user->isActivationRequired();
 
+        // Government accounts skip the activation wizard but still need to land on
+        // a pending-approval page until an admin approves them.
+        $nextActivationUrl = null;
+        if ($activationRequired) {
+            $nextActivationUrl = '/activation/account-type';
+        } elseif ($user->account_type === 'government' && $user->status === 'pending_activation') {
+            $nextActivationUrl = '/activation/pending-approval';
+        }
+
         return $this->success(
             [
                 'user'                => new UserResource($user),
                 'token'               => $token,
                 'activation_required' => $activationRequired,
-                'next_activation_url' => $activationRequired ? '/activation/account-type' : null,
+                'next_activation_url' => $nextActivationUrl,
             ],
             'Login successful.'
         );

@@ -216,6 +216,7 @@ class ActivationController extends Controller
                 'billing_address',
                 'billing_country',
                 'billing_city',
+                'billing_state',
                 'billing_zip_postal_code',
             ])
         );

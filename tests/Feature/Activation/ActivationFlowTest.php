@@ -105,18 +105,19 @@ it('saves dealer information for dealer account', function () {
     $user->update(['account_type' => 'dealer']);
 
     $this->actingAs($user)->postJson('/api/v1/activation/dealer-information', [
-        'company_name'            => 'Best Cars LLC',
-        'owner_name'              => 'John Owner',
-        'phone'                   => '555-999-8888',
-        'primary_contact'         => 'john@bestcars.com',
-        'license_number'          => 'DEALER-001',
-        'license_expiration_date' => now()->addYears(3)->format('Y-m-d'),
-        'dealer_address'          => '789 Lot Ave',
-        'dealer_country'          => 'US',
-        'dealer_city'             => 'Houston',
-        'dealer_zip_code'         => '77001',
-        'dealer_type'             => 'retail',
-        'dealer_classification'   => 'maryland_retail',
+        'company_name'             => 'Best Cars LLC',
+        'owner_name'               => 'John Owner',
+        'phone'                    => '555-999-8888',
+        'primary_contact'          => 'john@bestcars.com',
+        'license_number'           => 'DEALER-001',
+        'license_expiration_date'  => now()->addYears(3)->format('Y-m-d'),
+        'dealer_address'           => '789 Lot Ave',
+        'dealer_country'           => 'US',
+        'dealer_city'              => 'Houston',
+        'dealer_zip_code'          => '77001',
+        'dealer_classification'    => 'maryland_retail',
+        // Retail dealers must supply a salesman license number
+        'salesman_license_number'  => 'SL-12345',
     ])->assertOk();
 
     $this->assertDatabaseHas('user_dealer_information', [
@@ -132,7 +133,7 @@ it('rejects dealer information for non-dealer account', function () {
     $this->actingAs($user)->postJson('/api/v1/activation/dealer-information', [
         'company_name'            => 'Test Corp',
         'owner_name'              => 'Jane',
-        'phone'                   => '555-000',
+        'phone'                   => '555-000-1111',
         'primary_contact'         => 'jane@corp.com',
         'license_number'          => 'LIC-001',
         'license_expiration_date' => now()->addYear()->format('Y-m-d'),
@@ -140,8 +141,8 @@ it('rejects dealer information for non-dealer account', function () {
         'dealer_country'          => 'US',
         'dealer_city'             => 'NYC',
         'dealer_zip_code'         => '10001',
-        'dealer_type'             => 'retail',
-        'dealer_classification'   => 'maryland_retail',
+        // Use wholesale to avoid salesman_license_number requirement
+        'dealer_classification'   => 'maryland_wholesale',
     ])->assertStatus(422)
       ->assertJsonPath('code', 'not_a_dealer');
 });
