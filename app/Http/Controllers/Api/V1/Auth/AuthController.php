@@ -294,7 +294,10 @@ class AuthController extends Controller
     public function acceptInvite(Request $request): JsonResponse
     {
         $request->validate([
-            'token' => ['required', 'string'],
+            'token'                    => ['required', 'string'],
+            'agree_bidder_terms'       => ['required', 'accepted'],
+            'agree_ecomm_consent'      => ['required', 'accepted'],
+            'agree_accuracy_confirmed' => ['required', 'accepted'],
         ]);
 
         $profile = GovProfile::where('invite_token', $request->token)->first();
@@ -306,8 +309,14 @@ class AuthController extends Controller
         $user = $profile->user;
 
         $user->update([
-            'email_verified_at' => $user->email_verified_at ?? now(),
-            'status'            => 'pending_password',
+            'email_verified_at'        => $user->email_verified_at ?? now(),
+            'status'                   => 'pending_password',
+            'agreed_terms_at'          => now(),
+            'terms_version'            => config('app.terms_version', '1.0'),
+            'registration_ip_address'  => $request->ip(),
+            'agree_bidder_terms'       => true,
+            'agree_ecomm_consent'      => true,
+            'agree_accuracy_confirmed' => true,
         ]);
 
         $profile->update([
