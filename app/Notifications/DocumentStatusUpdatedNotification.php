@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\UserDocument;
+use App\Notifications\Concerns\HasBroadcastPayload;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -11,9 +13,9 @@ use Illuminate\Notifications\Notification;
  * Sent to a user when the status of one of their uploaded documents changes.
  * Covers: approved, rejected, needs_resubmission.
  */
-class DocumentStatusUpdatedNotification extends Notification
+class DocumentStatusUpdatedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, HasBroadcastPayload;
 
     public function __construct(
         private readonly UserDocument $document,
@@ -21,7 +23,7 @@ class DocumentStatusUpdatedNotification extends Notification
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
@@ -73,12 +75,30 @@ class DocumentStatusUpdatedNotification extends Notification
 
     public function toDatabase(mixed $notifiable): array
     {
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+        $label       = $this->documentLabel();
+
+        $title = match ($this->document->status) {
+            'approved'           => "{$label} approved",
+            'needs_resubmission' => "{$label} requires resubmission",
+            'rejected'           => "{$label} not accepted",
+            default              => "{$label} status updated",
+        };
+
+        $actionUrl = $this->document->status === 'needs_resubmission'
+            ? "{$frontendUrl}/activation/upload-id-license"
+            : "{$frontendUrl}/dashboard";
+
         return [
-            'type'          => 'document_status_updated',
-            'document_type' => $this->document->type,
-            'status'        => $this->document->status,
-            'admin_notes'   => $this->document->admin_notes,
-            'message'       => "Document \"{$this->documentLabel()}\" status: {$this->document->status}",
+            'type'       => 'document_status_updated',
+            'title'      => $title,
+            'message'    => "Your {$label} has been updated to: {$this->document->status}.",
+            'action_url' => $actionUrl,
+            'meta'       => [
+                'document_type' => $this->document->type,
+                'status'        => $this->document->status,
+                'admin_notes'   => $this->document->admin_notes,
+            ],
         ];
     }
 

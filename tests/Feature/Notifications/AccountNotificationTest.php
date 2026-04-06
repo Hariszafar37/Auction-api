@@ -35,7 +35,7 @@ it('approving a dealer sends AccountApprovedNotification', function () {
         ->assertStatus(200);
 
     Notification::assertSentTo($dealer, AccountApprovedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'dealer';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'dealer';
     });
 });
 
@@ -55,7 +55,7 @@ it('rejecting a dealer sends AccountRejectedNotification with reason', function 
 
     Notification::assertSentTo($dealer, AccountRejectedNotification::class, function ($n) {
         $data = $n->toDatabase($n);
-        return $data['context'] === 'dealer' && $data['reason'] === 'Missing documentation.';
+        return ($data['meta']['context'] ?? null) === 'dealer' && ($data['meta']['reason'] ?? null) === 'Missing documentation.';
     });
 });
 
@@ -74,7 +74,7 @@ it('approving a business sends AccountApprovedNotification', function () {
         ->assertStatus(200);
 
     Notification::assertSentTo($user, AccountApprovedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'business';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'business';
     });
 });
 
@@ -91,7 +91,7 @@ it('rejecting a business sends AccountRejectedNotification', function () {
         ->assertStatus(200);
 
     Notification::assertSentTo($user, AccountRejectedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'business';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'business';
     });
 });
 
@@ -110,7 +110,7 @@ it('approving a seller sends AccountApprovedNotification', function () {
         ->assertStatus(200);
 
     Notification::assertSentTo($user, AccountApprovedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'seller';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'seller';
     });
 });
 
@@ -127,7 +127,7 @@ it('rejecting a seller sends AccountRejectedNotification', function () {
         ->assertStatus(200);
 
     Notification::assertSentTo($user, AccountRejectedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'seller';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'seller';
     });
 });
 
@@ -153,7 +153,7 @@ it('approving a government account sends AccountApprovedNotification', function 
         ->assertStatus(200);
 
     Notification::assertSentTo($user, AccountApprovedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'government';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'government';
     });
 });
 
@@ -177,6 +177,6 @@ it('rejecting a government account sends AccountRejectedNotification', function 
         ->assertStatus(200);
 
     Notification::assertSentTo($user, AccountRejectedNotification::class, function ($n) {
-        return $n->toDatabase($n)['context'] === 'government';
+        return ($n->toDatabase($n)['meta']['context'] ?? null) === 'government';
     });
 });

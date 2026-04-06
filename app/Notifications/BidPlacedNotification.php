@@ -10,42 +10,38 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Sent via email when a user is outbid on an auction lot.
- * The real-time WebSocket event (OutbidNotification broadcast event) is dispatched
- * separately in BiddingService. This class handles the email + database channels.
+ * Sent to the vehicle seller when the first bid is placed on their lot.
+ * Subsequent bids on the same lot do NOT re-trigger this notification
+ * to avoid noise — the seller is notified once per lot open.
  */
-class OutbidEmailNotification extends Notification implements ShouldQueue
+class BidPlacedNotification extends Notification implements ShouldQueue
 {
     use Queueable, HasBroadcastPayload;
 
     public function __construct(
         private readonly AuctionLot $lot,
-        private readonly int        $newBid,
+        private readonly int        $bidAmount,
     ) {}
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database', 'broadcast'];
+        return ['mail', 'database'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
     {
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
-        $auctionUrl  = "{$frontendUrl}/auctions/{$this->lot->auction_id}";
-
         $vehicle     = $this->lot->vehicle;
         $vehicleName = $vehicle
             ? "{$vehicle->year} {$vehicle->make} {$vehicle->model}"
             : "Lot {$this->lot->lot_number}";
 
         return (new MailMessage)
-            ->subject("You've Been Outbid on {$vehicleName}")
+            ->subject("A Bid Has Been Placed on {$vehicleName}")
             ->greeting('Hello ' . ($notifiable->first_name ?? $notifiable->name) . ',')
-            ->line("You have been outbid on **{$vehicleName}** (Lot {$this->lot->lot_number}).")
-            ->line('**New high bid: $' . number_format($this->newBid) . '**')
-            ->line('The auction is still live — bid now to stay in the race.')
-            ->action('Return to Auction', $auctionUrl)
-            ->line('Bidding is binding. Good luck!');
+            ->line("A bid of **\$" . number_format($this->bidAmount) . "** has been placed on **{$vehicleName}** (Lot {$this->lot->lot_number}).")
+            ->action('View Auction', "{$frontendUrl}/auctions/{$this->lot->auction_id}")
+            ->line('You will be notified again when the auction concludes.');
     }
 
     public function toDatabase(mixed $notifiable): array
@@ -58,15 +54,15 @@ class OutbidEmailNotification extends Notification implements ShouldQueue
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
 
         return [
-            'type'       => 'outbid',
-            'title'      => 'You have been outbid',
-            'message'    => "You were outbid on {$vehicleName} — new high bid is \$" . number_format($this->newBid),
+            'type'       => 'bid_placed',
+            'title'      => 'A bid was placed on your vehicle',
+            'message'    => "A bid of \$" . number_format($this->bidAmount) . " was placed on {$vehicleName}.",
             'action_url' => "{$frontendUrl}/auctions/{$this->lot->auction_id}",
             'meta'       => [
                 'lot_id'     => $this->lot->id,
-                'auction_id' => $this->lot->auction_id,
                 'lot_number' => $this->lot->lot_number,
-                'new_bid'    => $this->newBid,
+                'auction_id' => $this->lot->auction_id,
+                'bid_amount' => $this->bidAmount,
             ],
         ];
     }

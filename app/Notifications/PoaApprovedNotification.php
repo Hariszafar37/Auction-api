@@ -2,20 +2,22 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\HasBroadcastPayload;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Sent to a seller when their Power of Attorney document is approved by an admin.
  */
-class PoaApprovedNotification extends Notification
+class PoaApprovedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, HasBroadcastPayload;
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
@@ -33,9 +35,14 @@ class PoaApprovedNotification extends Notification
 
     public function toDatabase(mixed $notifiable): array
     {
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+
         return [
-            'type'    => 'poa_approved',
-            'message' => 'Power of Attorney approved — you can now submit vehicles to auction.',
+            'type'       => 'poa_approved',
+            'title'      => 'Power of Attorney approved',
+            'message'    => 'Your POA has been approved — you can now submit vehicles to auction.',
+            'action_url' => "{$frontendUrl}/vehicles",
+            'meta'       => [],
         ];
     }
 }

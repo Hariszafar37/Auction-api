@@ -13,7 +13,6 @@ use App\Models\Bid;
 use App\Models\BidIncrement;
 use App\Models\ProxyBid;
 use App\Models\User;
-use App\Notifications\OutbidEmailNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -73,15 +72,15 @@ class BiddingService
                 $lot->refresh();
             }
 
-            // Broadcast new bid to all watchers
-            broadcast(new BidPlaced($lot, $bid));
+            // Dispatch BidPlaced event — broadcasts to watchers + triggers seller notification listener.
+            event(new BidPlaced($lot, $bid));
 
-            // Notify previous winner they've been outbid (real-time broadcast + email)
+            // Dispatch OutbidNotification event — broadcasts to outbid user in real-time
+            // AND triggers SendOutbidEmailNotification listener for email + DB notification.
             if ($previousWinnerId && $previousWinnerId !== $user->id) {
                 $outbidUser = User::find($previousWinnerId);
                 if ($outbidUser) {
-                    broadcast(new OutbidNotification($lot, $outbidUser));
-                    $outbidUser->notify(new OutbidEmailNotification($lot, $amount));
+                    event(new OutbidNotification($lot, $outbidUser));
                 }
             }
 
@@ -122,19 +121,17 @@ class BiddingService
             $lot->refresh();
         }
 
-        // Broadcast the resulting bid
-        broadcast(new BidPlaced($lot, $bid));
+        // Dispatch BidPlaced — broadcasts to watchers + triggers seller notification listener.
+        event(new BidPlaced($lot, $bid));
 
-        // If someone was outbid by proxy resolution, notify them (real-time broadcast + email)
+        // Dispatch OutbidNotification — broadcasts in real-time + triggers email/DB listener.
         $outbidUser = $bid->getAttribute('_outbid_user');
         if ($outbidUser) {
-            broadcast(new OutbidNotification($lot, $outbidUser));
-            $outbidUser->notify(new OutbidEmailNotification($lot, $lot->current_bid));
+            event(new OutbidNotification($lot, $outbidUser));
         } elseif ($previousWinnerId && $previousWinnerId !== $lot->current_winner_id) {
             $outbid = User::find($previousWinnerId);
             if ($outbid) {
-                broadcast(new OutbidNotification($lot, $outbid));
-                $outbid->notify(new OutbidEmailNotification($lot, $lot->current_bid));
+                event(new OutbidNotification($lot, $outbid));
             }
         }
 

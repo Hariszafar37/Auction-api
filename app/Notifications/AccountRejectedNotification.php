@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\HasBroadcastPayload;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -10,9 +12,9 @@ use Illuminate\Notifications\Notification;
  * Sent to users when their account application is rejected by an admin.
  * Covers dealer, business, individual seller, and government account types.
  */
-class AccountRejectedNotification extends Notification
+class AccountRejectedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, HasBroadcastPayload;
 
     /**
      * @param string|null $reason  Admin-provided rejection reason (may be null for some flows)
@@ -25,7 +27,7 @@ class AccountRejectedNotification extends Notification
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
@@ -77,7 +79,9 @@ class AccountRejectedNotification extends Notification
 
     public function toDatabase(mixed $notifiable): array
     {
-        $labels = [
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+
+        $titles = [
             'dealer'     => 'Dealer application not approved',
             'business'   => 'Business account application not approved',
             'seller'     => 'Seller application not approved',
@@ -85,10 +89,14 @@ class AccountRejectedNotification extends Notification
         ];
 
         return [
-            'type'    => 'account_rejected',
-            'context' => $this->context,
-            'reason'  => $this->reason,
-            'message' => $labels[$this->context] ?? 'Application not approved',
+            'type'       => 'account_rejected',
+            'title'      => $titles[$this->context] ?? 'Application not approved',
+            'message'    => $this->reason ?? 'Your application could not be approved at this time.',
+            'action_url' => "{$frontendUrl}/dashboard",
+            'meta'       => [
+                'context' => $this->context,
+                'reason'  => $this->reason,
+            ],
         ];
     }
 }
