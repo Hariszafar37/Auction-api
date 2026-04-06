@@ -251,8 +251,9 @@ class AuctionLotService
 
         broadcast(new LotStatusChanged($soldLot, $previous));
 
-        // Real-time in-app win notification to the buyer's private channel
-        broadcast(new UserWonLot($soldLot));
+        // Dispatch UserWonLot: broadcasts to buyer's private channel (ShouldBroadcast)
+        // and triggers SendAuctionWonNotification listener (database + broadcast notification).
+        event(new UserWonLot($soldLot));
 
         // Queue winner email notification
         dispatch(new NotifyAuctionWinner($soldLot));

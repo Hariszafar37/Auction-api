@@ -22,7 +22,9 @@ class AuctionWonNotification extends Notification implements ShouldQueue
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        // 'mail' intentionally excluded: NotifyAuctionWinner job (AuctionWonMail) already
+        // handles the winner email. This notification covers only database + realtime broadcast.
+        return ['database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
