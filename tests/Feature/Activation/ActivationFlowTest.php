@@ -81,6 +81,60 @@ it('saves account information', function () {
     ]);
 });
 
+it('saves account information using passport id type without issuing state', function () {
+    $user = makeActivationReadyUser();
+
+    $this->actingAs($user)->postJson('/api/v1/activation/account-information', [
+        'date_of_birth'      => '1985-06-20',
+        'address'            => '50 Oak Lane',
+        'country'            => 'US',
+        'state'              => 'Florida',
+        'city'               => 'Miami',
+        'zip_postal_code'    => '33101',
+        'id_type'            => 'passport',
+        'id_number'          => 'PP-12345678',
+        'id_issuing_country' => 'US',
+        'id_expiry'          => now()->addYears(5)->format('Y-m-d'),
+        // id_issuing_state intentionally omitted — not required for passport
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_account_information', [
+        'user_id'  => $user->id,
+        'id_type'  => 'passport',
+        'id_number' => 'PP-12345678',
+    ]);
+});
+
+it('saves account information for seller-enabled individual (buyer_and_seller intent)', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_intent' => 'buyer_and_seller']);
+
+    // Generic ID fields must save without error — driver_license_number must NOT be required
+    $this->actingAs($user)->postJson('/api/v1/activation/account-information', [
+        'date_of_birth'      => '1992-03-10',
+        'address'            => '77 Seller Ave',
+        'country'            => 'US',
+        'state'              => 'Maryland',
+        'city'               => 'Baltimore',
+        'zip_postal_code'    => '21201',
+        'id_type'            => 'driver_license',
+        'id_number'          => 'MD-DL-555',
+        'id_issuing_state'   => 'Maryland',
+        'id_issuing_country' => 'US',
+        'id_expiry'          => now()->addYears(3)->format('Y-m-d'),
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_account_information', [
+        'user_id'  => $user->id,
+        'id_type'  => 'driver_license',
+        'id_number' => 'MD-DL-555',
+    ]);
+
+    // Legacy driver_license_number should be NULL — the column is no longer required
+    $info = $user->fresh()->accountInformation;
+    expect($info->driver_license_number)->toBeNull();
+});
+
 it('rejects account information when dob indicates under 18', function () {
     $user = makeActivationReadyUser();
 
@@ -236,14 +290,16 @@ function completeAllSteps(User $user, string $accountType = 'individual'): void
     $user->update(['account_type' => $accountType]);
 
     $user->accountInformation()->create([
-        'date_of_birth'                  => '1990-05-10',
-        'address'                        => '100 Test St',
-        'country'                        => 'US',
-        'state'                          => 'TX',
-        'city'                           => 'Austin',
-        'zip_postal_code'                => '73301',
-        'driver_license_number'          => 'TX-DL-123',
-        'driver_license_expiration_date' => now()->addYears(2)->format('Y-m-d'),
+        'date_of_birth'    => '1990-05-10',
+        'address'          => '100 Test St',
+        'country'          => 'US',
+        'state'            => 'TX',
+        'city'             => 'Austin',
+        'zip_postal_code'  => '73301',
+        'id_type'          => 'driver_license',
+        'id_number'        => 'TX-DL-123',
+        'id_issuing_state' => 'Texas',
+        'id_expiry'        => now()->addYears(2)->format('Y-m-d'),
     ]);
 
     $user->billingInformation()->create([
@@ -333,10 +389,15 @@ it('rejects complete when no document has been uploaded', function () {
     $user = makeActivationReadyUser();
     $user->update(['account_type' => 'individual']);
     $user->accountInformation()->create([
-        'date_of_birth' => '1990-01-01', 'address' => '1 St', 'country' => 'US',
-        'state' => 'TX', 'city' => 'X', 'zip_postal_code' => '00000',
-        'driver_license_number' => 'DL-1',
-        'driver_license_expiration_date' => now()->addYear()->format('Y-m-d'),
+        'date_of_birth'   => '1990-01-01',
+        'address'         => '1 St',
+        'country'         => 'US',
+        'state'           => 'TX',
+        'city'            => 'X',
+        'zip_postal_code' => '00000',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'DL-1',
+        'id_expiry'       => now()->addYear()->format('Y-m-d'),
     ]);
     $user->billingInformation()->create([
         'billing_address' => '1 St', 'billing_country' => 'US',
