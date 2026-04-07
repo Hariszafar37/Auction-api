@@ -285,9 +285,12 @@ it('rejects unsupported file type', function () {
 
 // ── Activation complete ───────────────────────────────────────────────────────
 
-function completeAllSteps(User $user, string $accountType = 'individual'): void
+function completeAllSteps(User $user, string $accountType = 'individual', string $accountIntent = 'buyer'): void
 {
-    $user->update(['account_type' => $accountType]);
+    $user->update([
+        'account_type'   => $accountType,
+        'account_intent' => $accountType === 'dealer' ? 'buyer_and_seller' : $accountIntent,
+    ]);
 
     $user->accountInformation()->create([
         'date_of_birth'    => '1990-05-10',
@@ -351,6 +354,14 @@ it('completes activation for a dealer and sets status to pending_activation', fu
     $user = makeActivationReadyUser('dealer');
     completeAllSteps($user, 'dealer');
 
+    // Dealers have buyer_and_seller intent, so POA is required
+    PowerOfAttorney::create([
+        'user_id'             => $user->id,
+        'type'                => 'esign',
+        'status'              => 'signed',
+        'signer_printed_name' => 'Dealer Owner',
+    ]);
+
     $this->actingAs($user)
         ->postJson('/api/v1/activation/complete')
         ->assertOk()
@@ -365,7 +376,7 @@ it('completes activation for a dealer and sets status to pending_activation', fu
 
 it('rejects complete when account information is missing', function () {
     $user = makeActivationReadyUser();
-    $user->update(['account_type' => 'individual']);
+    $user->update(['account_type' => 'individual', 'account_intent' => 'buyer']);
 
     // billing + doc exist, but no account_information
     $user->billingInformation()->create([
@@ -387,7 +398,7 @@ it('rejects complete when account information is missing', function () {
 
 it('rejects complete when no document has been uploaded', function () {
     $user = makeActivationReadyUser();
-    $user->update(['account_type' => 'individual']);
+    $user->update(['account_type' => 'individual', 'account_intent' => 'buyer']);
     $user->accountInformation()->create([
         'date_of_birth'   => '1990-01-01',
         'address'         => '1 St',
@@ -508,7 +519,7 @@ it('rejects business-information for non-business account', function () {
 
 it('completes activation for a business and sets status to pending_activation', function () {
     $user = makeActivationReadyUser();
-    $user->update(['account_type' => 'business']);
+    $user->update(['account_type' => 'business', 'account_intent' => 'buyer']);
 
     // Business info instead of personal account info
     $user->businessInformation()->create([
@@ -563,4 +574,223 @@ it('already-active user cannot re-submit activation steps', function () {
         ->postJson('/api/v1/activation/complete')
         ->assertStatus(422)
         ->assertJsonPath('code', 'already_active');
+});
+
+// ── Defensive guard: account_intent null ─────────────────────────────────────
+
+it('rejects complete when account_intent is null', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'individual', 'account_intent' => null]);
+
+    $user->accountInformation()->create([
+        'date_of_birth' => '1990-01-01', 'address' => '1 St', 'country' => 'US',
+        'state' => 'TX', 'city' => 'X', 'zip_postal_code' => '00000',
+        'id_type' => 'driver_license', 'id_number' => 'DL-1',
+        'id_expiry' => now()->addYear()->format('Y-m-d'),
+    ]);
+    $user->billingInformation()->create([
+        'billing_address' => '1 St', 'billing_country' => 'US',
+        'billing_city' => 'X', 'billing_zip_postal_code' => '00000',
+    ]);
+    $user->documents()->create([
+        'type' => 'id', 'file_path' => 'x', 'disk' => 'public',
+        'original_name' => 'x.jpg', 'mime_type' => 'image/jpeg', 'size_bytes' => 1000,
+    ]);
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'activation_incomplete');
+});
+
+// ── Dealer without POA must fail ─────────────────────────────────────────────
+
+it('dealer cannot complete activation without POA', function () {
+    $user = makeActivationReadyUser('dealer');
+    completeAllSteps($user, 'dealer');
+    // No POA created — dealer has buyer_and_seller intent
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'activation_incomplete');
+});
+
+// ── Billing accepts international values ─────────────────────────────────────
+
+it('billing accepts non-US country and free-text state', function () {
+    $user = makeActivationReadyUser();
+
+    $this->actingAs($user)->postJson('/api/v1/activation/billing-information', [
+        'billing_address'         => '10 Rue de Paris',
+        'billing_country'         => 'FR',
+        'billing_city'            => 'Paris',
+        'billing_state'           => 'Île-de-France',
+        'billing_zip_postal_code' => '75001',
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_billing_information', [
+        'user_id'         => $user->id,
+        'billing_country' => 'FR',
+        'billing_state'   => 'Île-de-France',
+    ]);
+});
+
+it('billing accepts null billing_state', function () {
+    $user = makeActivationReadyUser();
+
+    $this->actingAs($user)->postJson('/api/v1/activation/billing-information', [
+        'billing_address'         => '1 High Street',
+        'billing_country'         => 'GB',
+        'billing_city'            => 'London',
+        'billing_zip_postal_code' => 'SW1A 1AA',
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_billing_information', [
+        'user_id'         => $user->id,
+        'billing_country' => 'GB',
+    ]);
+});
+
+// ── Account information accepts non-US address ──────────────────────────────
+
+it('account information accepts non-US country with free-text state', function () {
+    $user = makeActivationReadyUser();
+
+    $this->actingAs($user)->postJson('/api/v1/activation/account-information', [
+        'date_of_birth'      => '1988-04-12',
+        'address'            => 'Calle Mayor 5',
+        'country'            => 'ES',
+        'state'              => 'Comunidad de Madrid',
+        'city'               => 'Madrid',
+        'zip_postal_code'    => '28001',
+        'id_type'            => 'passport',
+        'id_number'          => 'ESP-PP-999',
+        'id_issuing_country' => 'ES',
+        'id_expiry'          => now()->addYears(5)->format('Y-m-d'),
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_account_information', [
+        'user_id' => $user->id,
+        'country' => 'ES',
+        'state'   => 'Comunidad de Madrid',
+    ]);
+});
+
+// ── Business seller requires POA ─────────────────────────────────────────────
+
+it('business with seller intent cannot complete without POA', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'business', 'account_intent' => 'buyer_and_seller']);
+
+    $user->businessInformation()->create([
+        'legal_business_name' => 'Seller Biz', 'entity_type' => 'llc',
+        'primary_contact_name' => 'Joe', 'contact_title' => 'CEO',
+        'phone' => '555-000-0000', 'address' => '1 St',
+        'city' => 'Baltimore', 'state' => 'MD', 'zip' => '21201',
+        'state_of_formation' => 'MD',
+    ]);
+    $user->billingInformation()->create([
+        'billing_address' => '1 St', 'billing_country' => 'US',
+        'billing_city' => 'X', 'billing_zip_postal_code' => '00000',
+    ]);
+    $user->documents()->create([
+        'type' => 'id', 'file_path' => 'x', 'disk' => 'public',
+        'original_name' => 'x.jpg', 'mime_type' => 'image/jpeg', 'size_bytes' => 1000,
+    ]);
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'activation_incomplete');
+});
+
+it('business with seller intent and signed POA can complete activation', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'business', 'account_intent' => 'buyer_and_seller']);
+
+    $user->businessInformation()->create([
+        'legal_business_name' => 'Seller Biz', 'entity_type' => 'llc',
+        'primary_contact_name' => 'Joe', 'contact_title' => 'CEO',
+        'phone' => '555-000-0000', 'address' => '1 St',
+        'city' => 'Baltimore', 'state' => 'MD', 'zip' => '21201',
+        'state_of_formation' => 'MD',
+    ]);
+    $user->billingInformation()->create([
+        'billing_address' => '1 St', 'billing_country' => 'US',
+        'billing_city' => 'X', 'billing_zip_postal_code' => '00000',
+    ]);
+    $user->documents()->create([
+        'type' => 'id', 'file_path' => 'x', 'disk' => 'public',
+        'original_name' => 'x.jpg', 'mime_type' => 'image/jpeg', 'size_bytes' => 1000,
+    ]);
+
+    PowerOfAttorney::create([
+        'user_id' => $user->id, 'type' => 'esign', 'status' => 'signed',
+        'signer_printed_name' => 'Joe Business',
+    ]);
+
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertOk()
+        ->assertJsonPath('data.activation_status', 'pending_approval');
+
+    expect($user->fresh()->status)->toBe('pending_activation');
+});
+
+// ── Business buyer-only does NOT require POA ─────────────────────────────────
+
+it('business with buyer-only intent does not require POA', function () {
+    $user = makeActivationReadyUser();
+    $user->update(['account_type' => 'business', 'account_intent' => 'buyer']);
+
+    $user->businessInformation()->create([
+        'legal_business_name' => 'Buyer Biz', 'entity_type' => 'corporation',
+        'primary_contact_name' => 'Amy', 'contact_title' => 'COO',
+        'phone' => '555-222-3333', 'address' => '2 Corp Ave',
+        'city' => 'Annapolis', 'state' => 'MD', 'zip' => '21401',
+        'state_of_formation' => 'MD',
+    ]);
+    $user->billingInformation()->create([
+        'billing_address' => '2 Corp Ave', 'billing_country' => 'US',
+        'billing_city' => 'Annapolis', 'billing_zip_postal_code' => '21401',
+    ]);
+    $user->documents()->create([
+        'type' => 'id', 'file_path' => 'x', 'disk' => 'public',
+        'original_name' => 'x.jpg', 'mime_type' => 'image/jpeg', 'size_bytes' => 1000,
+    ]);
+
+    // No POA — buyer-only should not need one
+    $this->actingAs($user)
+        ->postJson('/api/v1/activation/complete')
+        ->assertOk()
+        ->assertJsonPath('data.activation_status', 'pending_approval');
+});
+
+// ── Dealer information: non-US country accepted ──────────────────────────────
+
+it('dealer information accepts non-US country', function () {
+    $user = makeActivationReadyUser('dealer');
+    $user->update(['account_type' => 'dealer']);
+
+    $this->actingAs($user)->postJson('/api/v1/activation/dealer-information', [
+        'company_name'            => 'Toronto Motors',
+        'owner_name'              => 'Maple Owner',
+        'phone'                   => '416-555-0000',
+        'primary_contact'         => 'maple@motors.ca',
+        'license_number'          => 'ON-DLR-001',
+        'license_expiration_date' => now()->addYears(2)->format('Y-m-d'),
+        'dealer_address'          => '100 Bay Street',
+        'dealer_country'          => 'CA',
+        'dealer_city'             => 'Toronto',
+        'dealer_state'            => 'Ontario',
+        'dealer_zip_code'         => 'M5H 2Y4',
+        'dealer_classification'   => 'out_of_state_wholesale',
+    ])->assertOk();
+
+    $this->assertDatabaseHas('user_dealer_information', [
+        'user_id'        => $user->id,
+        'dealer_country' => 'CA',
+        'dealer_state'   => 'Ontario',
+    ]);
 });

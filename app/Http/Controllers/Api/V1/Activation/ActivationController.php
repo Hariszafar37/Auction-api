@@ -332,6 +332,10 @@ class ActivationController extends Controller
             $errors[] = 'At least one document must be uploaded.';
         }
 
+        if (! $user->account_intent) {
+            $errors[] = 'Account intent has not been set.';
+        }
+
         // POA is required for seller and buyer_and_seller intents
         if (in_array($user->account_intent, ['seller', 'buyer_and_seller'])) {
             $hasSignedPoa = PowerOfAttorney::where('user_id', $user->id)
