@@ -14,6 +14,7 @@ class PowerOfAttorney extends Model
         'type',
         'status',
         'file_path',
+        'disk',
         'signer_printed_name',
         'esigned_at',
         'esign_ip_address',

@@ -7,9 +7,9 @@ use App\Events\Account\POARejected;
 use App\Http\Controllers\Controller;
 use App\Models\PowerOfAttorney;
 use App\Models\User;
+use App\Support\SignedFileUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class AdminPoaController extends Controller
 {
@@ -91,7 +91,10 @@ class AdminPoaController extends Controller
             'type'                 => $poa->type,
             'status'               => $poa->status,
             'file_path'            => $poa->file_path,
-            'file_url'             => $poa->file_path ? Storage::url($poa->file_path) : null,
+            // Signed streaming URL — see App\Support\SignedFileUrl. Passing
+            // the current admin triggers a mint-time policy check and embeds
+            // viewer_id into the URL for download-time re-verification.
+            'file_url'             => SignedFileUrl::powerOfAttorney($poa, auth()->user()),
             'signer_printed_name'  => $poa->signer_printed_name,
             'esigned_at'           => $poa->esigned_at?->toIso8601String(),
             'admin_notes'          => $poa->admin_notes,

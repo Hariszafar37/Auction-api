@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\Seller\SellerApplicationController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
+use App\Http\Controllers\Api\V1\UserDocumentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -59,6 +60,21 @@ Route::prefix('v1')->group(function () {
     Route::get('/auth/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
         ->middleware('signed')
         ->name('verification.verify');
+
+    // Signed file download routes — outside auth:sanctum so that <a href> clicks
+    // from admin/user pages work. Security layers (see App\Support\SignedFileUrl
+    // for the full model):
+    //   - `signed`   : HMAC validation (forgery + viewer_id tamper protection)
+    //   - `throttle` : rate limit to cap abuse from a leaked URL
+    //   - Download controllers re-run the Policy against the embedded viewer_id
+    //     so permission revocation takes effect immediately within the TTL.
+    Route::get('/documents/{document}/download', [UserDocumentController::class, 'download'])
+        ->middleware(['signed', 'throttle:60,1'])
+        ->name('documents.download');
+
+    Route::get('/poa/{poa}/download', [PowerOfAttorneyController::class, 'download'])
+        ->middleware(['signed', 'throttle:60,1'])
+        ->name('poa.download');
 
     /*
     |--------------------------------------------------------------------------
