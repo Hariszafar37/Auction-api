@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\SignedFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -96,9 +97,12 @@ class UserResource extends JsonResource
                 'admin_notes'   => $doc->admin_notes,
                 'reviewed_by'   => $doc->reviewed_by,
                 'reviewed_at'   => $doc->reviewed_at?->toIso8601String(),
-                'url'           => $doc->file_path
-                                    ? \Illuminate\Support\Facades\Storage::url($doc->file_path)
-                                    : null,
+                // Signed streaming URL — see App\Support\SignedFileUrl. Passing
+                // the current authenticated user triggers a mint-time policy
+                // check (UserDocumentPolicy) AND embeds viewer_id into the
+                // signed URL for download-time re-verification. Returns null
+                // for viewers who cannot see the file.
+                'url'           => SignedFileUrl::userDocument($doc, $request->user()),
                 'uploaded_at'   => $doc->created_at->toIso8601String(),
             ])),
 

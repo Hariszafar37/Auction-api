@@ -18,8 +18,13 @@ use App\Listeners\Account\SendPOARejectedNotification;
 use App\Listeners\Auction\SendAuctionWonNotification;
 use App\Listeners\Auction\SendBidPlacedNotification;
 use App\Listeners\Auction\SendOutbidEmailNotification;
+use App\Models\PowerOfAttorney;
+use App\Models\UserDocument;
+use App\Policies\PowerOfAttorneyPolicy;
+use App\Policies\UserDocumentPolicy;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,6 +42,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Authorization policies ────────────────────────────────────────────────
+        // Registered here (not in a dedicated AuthServiceProvider) to match the
+        // existing project layout, which consolidates bindings in AppServiceProvider.
+        Gate::policy(UserDocument::class, UserDocumentPolicy::class);
+        Gate::policy(PowerOfAttorney::class, PowerOfAttorneyPolicy::class);
+
         ResetPassword::createUrlUsing(function (object $notifiable, string $token) {
             return config('app.frontend_url') . '/reset-password?token=' . $token
                 . '&email=' . urlencode($notifiable->getEmailForPasswordReset());

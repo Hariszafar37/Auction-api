@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -79,6 +80,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json([
                     'success' => false,
                     'message' => 'Forbidden. Insufficient permissions.',
+                    'code'    => 'forbidden',
+                ], 403);
+            }
+        });
+
+        // Laravel Policy denials (Gate::authorize, $user->can, etc.) render as
+        // 403 JSON on API routes. Without this handler the default Illuminate
+        // renderer emits an HTML 403 page, which breaks the API contract.
+        $exceptions->render(function (AuthorizationException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage() ?: 'This action is unauthorized.',
                     'code'    => 'forbidden',
                 ], 403);
             }
