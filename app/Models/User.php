@@ -245,4 +245,24 @@ class User extends Authenticatable implements MustVerifyEmail
         $classification = $this->dealerProfile?->dealer_classification;
         return in_array($classification, ['maryland_wholesale', 'out_of_state_wholesale'], true);
     }
+
+    /**
+     * Whether this user may perform seller write actions right now.
+     *
+     * Requires BOTH:
+     *   (a) an active account status (status === 'active'), AND
+     *   (b) selling intent (dealer role, seller role, or seller account_intent).
+     *
+     * Dealer/business accounts at 'pending_activation' (awaiting admin approval)
+     * must return false even though they already hold role:dealer — their
+     * permissions are unlocked only when an admin promotes status to 'active'.
+     *
+     * This is the single source of truth mirrored on the frontend
+     * (src/modules/auth/helpers.ts::canPerformSellerActions). Admins bypass
+     * seller endpoints entirely and are never checked with this helper.
+     */
+    public function canPerformSellerActions(): bool
+    {
+        return $this->isActive() && $this->hasSellIntent();
+    }
 }
