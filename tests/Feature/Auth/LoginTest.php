@@ -164,3 +164,114 @@ it('login for pending_activation returns activation_required true', function () 
       ->assertJsonPath('data.activation_required', true)
       ->assertJsonPath('data.next_activation_url', '/activation/account-type');
 });
+
+// ── next_activation_url routing by activation state ───────────────────────────
+//
+// Regression guard for the dealer/business pending-approval redirect loop:
+// users who completed the wizard and are only awaiting admin approval must
+// NOT be sent back to /activation/account-type.
+
+it('individual with incomplete activation is routed to the wizard', function () {
+    User::factory()->create([
+        'email'                   => 'indiv.incomplete@example.com',
+        'email_verified_at'       => now(),
+        'password'                => Hash::make('Secret123!'),
+        'password_set_at'         => now(),
+        'status'                  => 'pending_activation',
+        'account_type'            => 'individual',
+        'activation_completed_at' => null,
+    ]);
+
+    $this->postJson('/api/v1/auth/login', [
+        'email'    => 'indiv.incomplete@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(200)
+      ->assertJsonPath('data.activation_required', true)
+      ->assertJsonPath('data.next_activation_url', '/activation/account-type');
+});
+
+it('dealer pending admin approval is NOT sent back to the wizard', function () {
+    $dealer = User::factory()->create([
+        'email'                   => 'dealer.pending@example.com',
+        'email_verified_at'       => now(),
+        'password'                => Hash::make('Secret123!'),
+        'password_set_at'         => now(),
+        'status'                  => 'pending_activation',
+        'account_type'            => 'dealer',
+        'activation_completed_at' => now(),
+    ]);
+    $dealer->assignRole('dealer');
+
+    $response = $this->postJson('/api/v1/auth/login', [
+        'email'    => 'dealer.pending@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(200);
+
+    // activation_required stays true (status !== 'active'), but the URL must
+    // land on the pending-approval screen rather than the wizard.
+    expect($response->json('data.activation_required'))->toBeTrue();
+    expect($response->json('data.next_activation_url'))->toBe('/activation/pending-approval');
+    expect($response->json('data.next_activation_url'))->not->toBe('/activation/account-type');
+});
+
+it('business pending admin approval is NOT sent back to the wizard', function () {
+    User::factory()->create([
+        'email'                   => 'biz.pending@example.com',
+        'email_verified_at'       => now(),
+        'password'                => Hash::make('Secret123!'),
+        'password_set_at'         => now(),
+        'status'                  => 'pending_activation',
+        'account_type'            => 'business',
+        'activation_completed_at' => now(),
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/login', [
+        'email'    => 'biz.pending@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(200);
+
+    expect($response->json('data.activation_required'))->toBeTrue();
+    expect($response->json('data.next_activation_url'))->toBe('/activation/pending-approval');
+    expect($response->json('data.next_activation_url'))->not->toBe('/activation/account-type');
+});
+
+it('government pending admin approval lands on pending-approval page', function () {
+    // Government accounts skip the wizard entirely — User::isActivationRequired()
+    // returns false for them — so activation_required is false, but they still
+    // need the pending-approval URL to surface until an admin approves.
+    User::factory()->create([
+        'email'                   => 'gov.pending@example.com',
+        'email_verified_at'       => now(),
+        'password'                => Hash::make('Secret123!'),
+        'password_set_at'         => now(),
+        'status'                  => 'pending_activation',
+        'account_type'            => 'government',
+        'activation_completed_at' => null,
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/login', [
+        'email'    => 'gov.pending@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(200);
+
+    expect($response->json('data.activation_required'))->toBeFalse();
+    expect($response->json('data.next_activation_url'))->toBe('/activation/pending-approval');
+});
+
+it('active user gets null next_activation_url', function () {
+    User::factory()->create([
+        'email'             => 'active@example.com',
+        'email_verified_at' => now(),
+        'password'          => Hash::make('Secret123!'),
+        'password_set_at'   => now(),
+        'status'            => 'active',
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/login', [
+        'email'    => 'active@example.com',
+        'password' => 'Secret123!',
+    ])->assertStatus(200);
+
+    expect($response->json('data.activation_required'))->toBeFalse();
+    expect($response->json('data.next_activation_url'))->toBeNull();
+});
