@@ -176,14 +176,18 @@ class AuthController extends Controller
 
         $activationRequired = $user->isActivationRequired();
 
-        // Government accounts skip the activation wizard but still need to land on
-        // a pending-approval page until an admin approves them.
-        $nextActivationUrl = null;
-        if ($activationRequired) {
-            $nextActivationUrl = '/activation/account-type';
-        } elseif ($user->account_type === 'government' && $user->status === 'pending_activation') {
-            $nextActivationUrl = '/activation/pending-approval';
-        }
+        // Route based on the real activation state, not just the raw "not yet active"
+        // flag. Dealer/business users who finished the wizard and are only awaiting
+        // admin approval would otherwise be bounced back to /activation/account-type
+        // and end up in a redirect loop. getActivationStatus() already distinguishes
+        //   - incomplete       → wizard not finished (individuals mid-flow, etc.)
+        //   - pending_approval → wizard finished OR gov account waiting on admin
+        //   - complete         → status === 'active'
+        $nextActivationUrl = match ($user->getActivationStatus()) {
+            'incomplete'       => '/activation/account-type',
+            'pending_approval' => '/activation/pending-approval',
+            'complete'         => null,
+        };
 
         return $this->success(
             [
