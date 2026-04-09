@@ -269,7 +269,7 @@ it('pending_activation dealer cannot submit vehicle to auction', function () {
             'starting_bid' => 500,
         ])
         ->assertStatus(403)
-        ->assertJsonPath('code', 'account_inactive');
+        ->assertJsonPath('code', 'seller_inactive');
 });
 
 it('suspended dealer cannot submit vehicle to auction', function () {
@@ -296,7 +296,7 @@ it('suspended dealer cannot submit vehicle to auction', function () {
             'starting_bid' => 500,
         ])
         ->assertStatus(403)
-        ->assertJsonPath('code', 'account_inactive');
+        ->assertJsonPath('code', 'seller_inactive');
 });
 
 // ══ BUYER ACCESS UNAFFECTED ═══════════════════════════════════════════════

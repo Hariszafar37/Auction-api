@@ -35,6 +35,10 @@ class DealerVehicleMediaController extends Controller
             return $this->error('Vehicle not found.', 404, 'not_found');
         }
 
+        if ($block = $this->blockIfCannotSell($request)) {
+            return $block;
+        }
+
         $uploaded = [];
         $errors   = [];
 
@@ -79,6 +83,10 @@ class DealerVehicleMediaController extends Controller
             return $this->error('Vehicle not found.', 404, 'not_found');
         }
 
+        if ($block = $this->blockIfCannotSell($request)) {
+            return $block;
+        }
+
         if ((int) $media->model_id !== $vehicle->id || $media->model_type !== Vehicle::class) {
             return $this->error('Media item does not belong to this vehicle.', 404, 'not_found');
         }
@@ -99,6 +107,10 @@ class DealerVehicleMediaController extends Controller
     {
         if (! $this->ownsVehicle($vehicle, $request)) {
             return $this->error('Vehicle not found.', 404, 'not_found');
+        }
+
+        if ($block = $this->blockIfCannotSell($request)) {
+            return $block;
         }
 
         $ids = $request->validated()['ids'];
@@ -132,6 +144,25 @@ class DealerVehicleMediaController extends Controller
     private function ownsVehicle(Vehicle $vehicle, Request $request): bool
     {
         return $vehicle->seller_id === $request->user()->id;
+    }
+
+    /**
+     * Returns a 403 response when the authenticated user cannot perform seller
+     * actions right now (e.g. dealer/business at pending_approval), or null when
+     * the request may proceed. Ownership is checked first so we don't leak
+     * existence of vehicles the user doesn't own.
+     */
+    private function blockIfCannotSell(Request $request): ?JsonResponse
+    {
+        if ($request->user()->canPerformSellerActions()) {
+            return null;
+        }
+
+        return $this->error(
+            'Your account must be approved and active before performing seller actions.',
+            403,
+            'seller_inactive'
+        );
     }
 
     private function allMedia(Vehicle $vehicle): array

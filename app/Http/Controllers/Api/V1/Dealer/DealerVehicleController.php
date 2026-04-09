@@ -59,6 +59,19 @@ class DealerVehicleController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $user = $request->user();
+
+        // Pending-approval dealers/businesses already hold role:dealer (and thus
+        // pass the permission:inventory.create middleware), but must not be able
+        // to create inventory until an admin flips status to 'active'.
+        if (! $user->canPerformSellerActions()) {
+            return $this->error(
+                'Your account must be approved and active before performing seller actions.',
+                403,
+                'seller_inactive'
+            );
+        }
+
         $data = $request->validate([
             'vin'             => ['required', 'string', 'size:17', 'unique:vehicles,vin'],
             'year'            => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 1)],
@@ -117,9 +130,14 @@ class DealerVehicleController extends Controller
             return $this->error('Vehicle not found.', 404, 'not_found');
         }
 
-        // Account must be active — consistent with bid-side status enforcement in BidController
-        if ($user->status !== 'active') {
-            return $this->error('Your account must be active to submit vehicles to auction.', 403, 'account_inactive');
+        // Account must be active AND have seller intent — single source of truth.
+        // Mirrors the gate used by store() and the media endpoints.
+        if (! $user->canPerformSellerActions()) {
+            return $this->error(
+                'Your account must be approved and active before performing seller actions.',
+                403,
+                'seller_inactive'
+            );
         }
 
         // All seller-enabled accounts (individual, dealer, business) need an approved POA
