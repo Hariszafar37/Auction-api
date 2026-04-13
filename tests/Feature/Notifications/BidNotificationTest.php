@@ -50,6 +50,24 @@ function makeBidNotificationBuyer(): User
 {
     $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
     $user->assignRole('buyer');
+
+    // Seed valid payment — every buyer in this test must pass the bidding gate.
+    $user->billingInformation()->updateOrCreate(
+        ['user_id' => $user->id],
+        [
+            'billing_address'         => '123 Test St',
+            'billing_country'         => 'US',
+            'billing_city'            => 'Baltimore',
+            'billing_zip_postal_code' => '21201',
+            'payment_method_added'    => true,
+            'cardholder_name'         => 'Test User',
+            'card_brand'              => 'visa',
+            'card_last_four'          => '4242',
+            'card_expiry_month'       => 12,
+            'card_expiry_year'        => (int) now()->year + 5,
+        ]
+    );
+
     return $user;
 }
 

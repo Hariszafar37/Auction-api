@@ -31,6 +31,12 @@ class UserResource extends JsonResource
             'activation_required'     => $this->isActivationRequired(),
             'activation_completed_at' => $this->activation_completed_at?->toIso8601String(),
 
+            // Payment gate — single source of truth the frontend checks
+            // before enabling the "Place Bid" button. Backed by
+            // User::hasValidPaymentMethod(); see BiddingService for the
+            // matching server-side hard gate.
+            'has_valid_payment_method' => $this->hasValidPaymentMethod(),
+
             // Step data (loaded on demand)
             'account_information'     => $this->whenLoaded('accountInformation', fn () => $this->accountInformation ? [
                 'date_of_birth'      => $this->accountInformation->date_of_birth?->toDateString(),
@@ -85,6 +91,12 @@ class UserResource extends JsonResource
                 'billing_state'           => $this->billingInformation->billing_state,
                 'billing_zip_postal_code' => $this->billingInformation->billing_zip_postal_code,
                 'payment_method_added'    => $this->billingInformation->payment_method_added,
+                // Card metadata (PCI-safe — no PAN / CVV is ever stored)
+                'cardholder_name'         => $this->billingInformation->cardholder_name,
+                'card_brand'              => $this->billingInformation->card_brand,
+                'card_last_four'          => $this->billingInformation->card_last_four,
+                'card_expiry_month'       => $this->billingInformation->card_expiry_month,
+                'card_expiry_year'        => $this->billingInformation->card_expiry_year,
             ] : null),
 
             'documents'               => $this->whenLoaded('documents', fn () => $this->documents->map(fn ($doc) => [

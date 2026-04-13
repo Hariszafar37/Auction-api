@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\Dealer\DealerVehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleMediaController;
 use App\Http\Controllers\Api\V1\Seller\SellerApplicationController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\User\PaymentMethodController;
 use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
 use App\Http\Controllers\Api\V1\UserDocumentController;
@@ -94,6 +95,12 @@ Route::prefix('v1')->group(function () {
             Route::get('/',        [ProfileController::class, 'show'])->name('show');
             Route::patch('/',      [ProfileController::class, 'update'])->name('update');
             Route::put('/payment', [ProfileController::class, 'updatePayment'])->name('payment');
+        });
+
+        // Payment method (card metadata — optional during activation, required for bidding)
+        Route::prefix('users/payment-method')->name('users.payment-method.')->group(function () {
+            Route::get('/',  [PaymentMethodController::class, 'show'])->name('show');
+            Route::post('/', [PaymentMethodController::class, 'store'])->name('store');
         });
 
         /*

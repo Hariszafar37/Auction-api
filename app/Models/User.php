@@ -202,6 +202,25 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->status !== 'active';
     }
 
+    // ── Payment helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Whether the user has a non-expired payment method on file.
+     *
+     * Source of truth for the bidding gate (BiddingService::placeBid /
+     * setProxyBid) and the `has_valid_payment_method` flag exposed to the
+     * frontend via UserResource.
+     *
+     * Returns true iff a billing_information row exists AND its stored card
+     * metadata (brand / last_four / expiry) is present and the expiry is
+     * current month or later. Raw PAN/CVV is never stored, so this is purely
+     * a metadata check.
+     */
+    public function hasValidPaymentMethod(): bool
+    {
+        return (bool) $this->billingInformation?->hasValidCard();
+    }
+
     // ── Compliance helpers ────────────────────────────────────────────────────
 
     /**

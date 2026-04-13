@@ -333,6 +333,24 @@ it('pure buyer can bid without any POA — buyer flow is not blocked', function 
     ]);
     $buyer->assignRole('buyer');
 
+    // Seed a valid payment method so the POA-less bid is not blocked by
+    // the unrelated payment gate.
+    $buyer->billingInformation()->updateOrCreate(
+        ['user_id' => $buyer->id],
+        [
+            'billing_address'         => '123 Test St',
+            'billing_country'         => 'US',
+            'billing_city'            => 'Baltimore',
+            'billing_zip_postal_code' => '21201',
+            'payment_method_added'    => true,
+            'cardholder_name'         => 'Test User',
+            'card_brand'              => 'visa',
+            'card_last_four'          => '4242',
+            'card_expiry_month'       => 12,
+            'card_expiry_year'        => (int) now()->year + 5,
+        ]
+    );
+
     // Buyer has no POA — bidding must still work
     $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [

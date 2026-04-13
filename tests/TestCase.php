@@ -66,4 +66,38 @@ abstract class TestCase extends BaseTestCase
 
         return $this->actingAs($user, 'sanctum');
     }
+
+    /**
+     * Seed a valid payment method onto the given user so they satisfy the
+     * BiddingService::requireValidPaymentMethod() gate.
+     *
+     * Creates or upserts the user_billing_information row with PCI-safe
+     * metadata and an expiry far in the future. Any test that calls /bids
+     * or /proxy-bid against a user who is expected to succeed must call
+     * this helper first.
+     */
+    protected function givePaymentMethod(\App\Models\User $user): \App\Models\User
+    {
+        $user->billingInformation()->updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'billing_address'         => '123 Test St',
+                'billing_country'         => 'US',
+                'billing_city'            => 'Baltimore',
+                'billing_zip_postal_code' => '21201',
+                'payment_method_added'    => true,
+                'cardholder_name'         => 'Test User',
+                'card_brand'              => 'visa',
+                'card_last_four'          => '4242',
+                'card_expiry_month'       => 12,
+                'card_expiry_year'        => (int) now()->year + 5,
+            ]
+        );
+
+        // Reset the relation cache so callers using the same $user instance
+        // immediately observe the new billing row via ->hasValidPaymentMethod().
+        $user->unsetRelation('billingInformation');
+
+        return $user;
+    }
 }

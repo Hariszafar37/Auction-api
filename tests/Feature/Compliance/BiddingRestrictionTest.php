@@ -64,11 +64,35 @@ function makeApprovedDealer(): User
     return $dealer;
 }
 
+/**
+ * Seed a valid payment method directly (helper function — function-scoped tests
+ * can't reach $this-> protected methods from top-level closures).
+ */
+function givePayment(User $user): void
+{
+    $user->billingInformation()->updateOrCreate(
+        ['user_id' => $user->id],
+        [
+            'billing_address'         => '123 Test St',
+            'billing_country'         => 'US',
+            'billing_city'            => 'Baltimore',
+            'billing_zip_postal_code' => '21201',
+            'payment_method_added'    => true,
+            'cardholder_name'         => 'Test User',
+            'card_brand'              => 'visa',
+            'card_last_four'          => '4242',
+            'card_expiry_month'       => 12,
+            'card_expiry_year'        => (int) now()->year + 5,
+        ]
+    );
+}
+
 // Test 7: Dealer-only lot rejects bid from individual account
 it('individual user cannot bid on a dealer-only lot', function () {
     [$auction, $lot] = makeDealerOnlyLot();
 
     $buyer = User::factory()->create(['status' => 'active']);
+    givePayment($buyer); // isolate the dealer-only check from the payment gate
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -85,6 +109,7 @@ it('approved dealer can bid on a dealer-only lot', function () {
     [$auction, $lot] = makeDealerOnlyLot();
 
     $dealer = makeApprovedDealer();
+    givePayment($dealer);
 
     $response = $this->actingAs($dealer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -125,6 +150,7 @@ it('individual buyer can bid on a public (non-dealer-only) lot', function () {
     ]);
 
     $buyer = User::factory()->create(['status' => 'active']);
+    givePayment($buyer);
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -140,6 +166,7 @@ it('individual user cannot set proxy bid on dealer-only lot', function () {
     [$auction, $lot] = makeDealerOnlyLot();
 
     $buyer = User::factory()->create(['status' => 'active']);
+    givePayment($buyer); // isolate dealer-only check from payment gate
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/proxy-bid", [
