@@ -30,7 +30,7 @@ class AdminGovController extends Controller
                 'last_name'    => '',
                 'email'        => $request->email,
                 'account_type' => 'government',
-                'status'       => 'pending',
+                'status'       => 'pending_email_verification',
                 'password'     => null,
             ]);
 
