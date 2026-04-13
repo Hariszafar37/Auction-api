@@ -52,13 +52,33 @@ it('admin can create a government account', function () {
     $this->assertDatabaseHas('users', [
         'email'        => 'fleet@baltimore.gov',
         'account_type' => 'government',
-        'status'       => 'pending',
+        'status'       => 'pending_email_verification',
     ]);
 
     $this->assertDatabaseHas('gov_profiles', [
         'entity_name'    => 'Baltimore City Government',
         'approval_status' => 'pending',
     ]);
+});
+
+it('created government user has a valid status enum value (regression: Data truncated for status)', function () {
+    $admin = makeGovAdmin();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/admin/government', govPayload(['email' => 'enum-check@gov.test']))
+        ->assertStatus(201);
+
+    $user = User::where('email', 'enum-check@gov.test')->firstOrFail();
+
+    // Must be one of the valid MySQL enum values to avoid SQLSTATE[01000] truncation errors.
+    expect($user->status)->toBe('pending_email_verification')
+        ->and(in_array($user->status, [
+            'pending_email_verification',
+            'pending_password',
+            'pending_activation',
+            'active',
+            'suspended',
+        ], true))->toBeTrue();
 });
 
 it('admin create gov account assigns buyer role', function () {
