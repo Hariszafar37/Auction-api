@@ -8,6 +8,7 @@ use App\Events\Auction\BidPlaced;
 use App\Events\Auction\CountdownExtended;
 use App\Events\Auction\LotStatusChanged;
 use App\Events\Auction\OutbidNotification;
+use App\Exceptions\PaymentRequiredException;
 use App\Models\AuctionLot;
 use App\Models\Bid;
 use App\Models\BidIncrement;
@@ -28,9 +29,14 @@ class BiddingService
      * Place a manual bid on behalf of a user.
      *
      * @throws ValidationException
+     * @throws PaymentRequiredException
      */
     public function placeBid(AuctionLot $lot, User $user, int $amount): Bid
     {
+        // Hard gate: user must have a non-expired payment method on file.
+        // Admins never place real bids via this path; no role bypass needed.
+        $this->requireValidPaymentMethod($user);
+
         return DB::transaction(function () use ($lot, $user, $amount) {
             // Lock the lot to prevent race conditions
             $lot = AuctionLot::lockForUpdate()->find($lot->id);
@@ -104,9 +110,12 @@ class BiddingService
      * Set or update a proxy (max) bid for a user.
      *
      * @throws ValidationException
+     * @throws PaymentRequiredException
      */
     public function setProxyBid(AuctionLot $lot, User $user, int $maxAmount): array
     {
+        $this->requireValidPaymentMethod($user);
+
         $this->validateProxyBid($lot, $user, $maxAmount);
 
         $previousWinnerId = $lot->current_winner_id;
@@ -140,6 +149,18 @@ class BiddingService
             'bid'        => $bid,
             'is_winning' => $lot->current_winner_id === $user->id,
         ];
+    }
+
+    // ─── Payment gate ───────────────────────────────────────────────────────────
+
+    /**
+     * @throws PaymentRequiredException
+     */
+    private function requireValidPaymentMethod(User $user): void
+    {
+        if (! $user->hasValidPaymentMethod()) {
+            throw new PaymentRequiredException();
+        }
     }
 
     // ─── Validation ─────────────────────────────────────────────────────────────

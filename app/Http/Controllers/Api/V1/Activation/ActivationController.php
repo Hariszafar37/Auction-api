@@ -324,6 +324,10 @@ class ActivationController extends Controller
             $errors[] = 'Dealer information is incomplete.';
         }
 
+        // Billing ADDRESS is required (buyer verification). Card data is optional —
+        // users may skip payment during activation and add a card later from the
+        // dedicated /payment-information page. BiddingService enforces the card
+        // requirement at bid time via PaymentRequiredException.
         if (! $user->billingInformation) {
             $errors[] = 'Billing information is incomplete.';
         }
