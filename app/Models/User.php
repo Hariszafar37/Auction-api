@@ -207,9 +207,9 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Whether the user has a non-expired payment method on file.
      *
-     * Source of truth for the bidding gate (BiddingService::placeBid /
-     * setProxyBid) and the `has_valid_payment_method` flag exposed to the
-     * frontend via UserResource.
+     * Source of truth for the payment portion of the bid gate. Exposed to
+     * the frontend via UserResource.has_valid_payment_method so the UI can
+     * deep-link users to /payment-information.
      *
      * Returns true iff a billing_information row exists AND its stored card
      * metadata (brand / last_four / expiry) is present and the expiry is
@@ -219,6 +219,64 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasValidPaymentMethod(): bool
     {
         return (bool) $this->billingInformation?->hasValidCard();
+    }
+
+    // ── Bid eligibility (unified gate) ────────────────────────────────────────
+
+    /**
+     * Single source of truth for whether this user may currently place a bid.
+     *
+     * Mirrored on the frontend via UserResource.can_bid so the UI can
+     * pre-emptively disable the bid button. BiddingService::placeBid and
+     * setProxyBid re-check this server-side — the cached flag can be stale
+     * (a card can expire between requests, an admin can suspend an account).
+     *
+     * Current rules:
+     *   - account status must be 'active' (blocks pending_* and suspended)
+     *   - must have a non-expired payment method on file
+     *
+     * Future-safe extension points (reserved, not yet wired):
+     *   - deposit requirements per lot / auction
+     *   - outstanding credit balance
+     *   - KYC verification state
+     *
+     * All new rules should be added to BOTH this method and
+     * getBidIneligibilityReason() so the frontend can emit a targeted error.
+     */
+    public function canBid(): bool
+    {
+        return $this->getBidIneligibilityReason() === null;
+    }
+
+    /**
+     * Returns the first reason this user cannot bid, or null if they can.
+     *
+     * Checked in priority order — most specific first — so the frontend
+     * can show the correct remediation UI. "suspended" is more actionable
+     * than the generic "inactive_account" even though both fail isActive().
+     *
+     * Reason enum (keep in sync with BidNotAllowedException docblock):
+     *   suspended | inactive_account | missing_payment | null
+     */
+    public function getBidIneligibilityReason(): ?string
+    {
+        if ($this->isSuspended()) {
+            return 'suspended';
+        }
+
+        if (! $this->isActive()) {
+            return 'inactive_account';
+        }
+
+        if (! $this->hasValidPaymentMethod()) {
+            return 'missing_payment';
+        }
+
+        // Future rules (deposit / credit / KYC) plug in here, above the
+        // implicit null return. Each new rule needs a matching reason string
+        // so the frontend switch in BidBlockedModal can route correctly.
+
+        return null;
     }
 
     // ── Compliance helpers ────────────────────────────────────────────────────

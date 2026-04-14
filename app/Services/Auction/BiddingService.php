@@ -8,7 +8,7 @@ use App\Events\Auction\BidPlaced;
 use App\Events\Auction\CountdownExtended;
 use App\Events\Auction\LotStatusChanged;
 use App\Events\Auction\OutbidNotification;
-use App\Exceptions\PaymentRequiredException;
+use App\Exceptions\BidNotAllowedException;
 use App\Models\AuctionLot;
 use App\Models\Bid;
 use App\Models\BidIncrement;
@@ -29,13 +29,13 @@ class BiddingService
      * Place a manual bid on behalf of a user.
      *
      * @throws ValidationException
-     * @throws PaymentRequiredException
+     * @throws BidNotAllowedException
      */
     public function placeBid(AuctionLot $lot, User $user, int $amount): Bid
     {
-        // Hard gate: user must have a non-expired payment method on file.
-        // Admins never place real bids via this path; no role bypass needed.
-        $this->requireValidPaymentMethod($user);
+        // Unified eligibility gate — delegates to User::canBid() so the rule
+        // set stays in one place. Admins never place real bids via this path.
+        $this->requireBidEligibility($user);
 
         return DB::transaction(function () use ($lot, $user, $amount) {
             // Lock the lot to prevent race conditions
@@ -110,11 +110,11 @@ class BiddingService
      * Set or update a proxy (max) bid for a user.
      *
      * @throws ValidationException
-     * @throws PaymentRequiredException
+     * @throws BidNotAllowedException
      */
     public function setProxyBid(AuctionLot $lot, User $user, int $maxAmount): array
     {
-        $this->requireValidPaymentMethod($user);
+        $this->requireBidEligibility($user);
 
         $this->validateProxyBid($lot, $user, $maxAmount);
 
@@ -151,16 +151,24 @@ class BiddingService
         ];
     }
 
-    // ─── Payment gate ───────────────────────────────────────────────────────────
+    // ─── Eligibility gate ───────────────────────────────────────────────────────
 
     /**
-     * @throws PaymentRequiredException
+     * Unified pre-bid check. Delegates to User::canBid() and throws a
+     * reason-carrying BidNotAllowedException so the frontend can route the
+     * user to the correct remediation (payment page, support, etc.).
+     *
+     * @throws BidNotAllowedException
      */
-    private function requireValidPaymentMethod(User $user): void
+    private function requireBidEligibility(User $user): void
     {
-        if (! $user->hasValidPaymentMethod()) {
-            throw new PaymentRequiredException();
+        if ($user->canBid()) {
+            return;
         }
+
+        throw new BidNotAllowedException(
+            reason: $user->getBidIneligibilityReason() ?? 'not_eligible',
+        );
     }
 
     // ─── Validation ─────────────────────────────────────────────────────────────

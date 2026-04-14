@@ -108,6 +108,7 @@ test('lot not in if_sale status is rejected', function () {
 
 test('POST if-sale/increase-bid returns 200 with updated lot', function () {
     $winner  = User::factory()->create(['status' => 'active']);
+    $this->givePaymentMethod($winner);
     $lot     = $this->createIfSaleLot($winner);
     $auction = Auction::find($lot->auction_id);
 
@@ -125,6 +126,7 @@ test('POST if-sale/increase-bid returns 200 with updated lot', function () {
 test('non-winner gets 422', function () {
     $winner   = User::factory()->create(['status' => 'active']);
     $outsider = User::factory()->create(['status' => 'active']);
+    $this->givePaymentMethod($outsider);
     $lot      = $this->createIfSaleLot($winner);
     $auction  = Auction::find($lot->auction_id);
 
