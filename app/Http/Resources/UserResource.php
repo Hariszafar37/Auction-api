@@ -31,11 +31,18 @@ class UserResource extends JsonResource
             'activation_required'     => $this->isActivationRequired(),
             'activation_completed_at' => $this->activation_completed_at?->toIso8601String(),
 
-            // Payment gate — single source of truth the frontend checks
-            // before enabling the "Place Bid" button. Backed by
-            // User::hasValidPaymentMethod(); see BiddingService for the
-            // matching server-side hard gate.
-            'has_valid_payment_method' => $this->hasValidPaymentMethod(),
+            // Payment-method sub-flag — the frontend uses this to know
+            // whether to deep-link into /payment-information. Backed by
+            // User::hasValidPaymentMethod().
+            'has_valid_payment_method'  => $this->hasValidPaymentMethod(),
+
+            // Unified bid-eligibility gate — single source of truth the
+            // frontend checks before enabling the "Place Bid" button. See
+            // User::canBid() for the full rule set. BiddingService re-checks
+            // this server-side on every bid and throws BidNotAllowedException
+            // (code: BID_NOT_ALLOWED) with a reason enum the UI switches on.
+            'can_bid'                   => $this->canBid(),
+            'bid_ineligibility_reason'  => $this->getBidIneligibilityReason(),
 
             // Step data (loaded on demand)
             'account_information'     => $this->whenLoaded('accountInformation', fn () => $this->accountInformation ? [

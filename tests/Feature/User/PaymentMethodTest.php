@@ -236,7 +236,7 @@ function makePaymentTestLot(): array
     return [$auction, $lot];
 }
 
-it('bid is blocked with 402 PAYMENT_REQUIRED when user has no card', function () {
+it('bid is blocked with BID_NOT_ALLOWED/missing_payment when user has no card', function () {
     [$auction, $lot] = makePaymentTestLot();
 
     $buyer = User::factory()->create(['status' => 'active']);
@@ -246,12 +246,13 @@ it('bid is blocked with 402 PAYMENT_REQUIRED when user has no card', function ()
             'amount' => 1000,
         ]);
 
-    $response->assertStatus(402)
-             ->assertJsonPath('code', 'PAYMENT_REQUIRED')
+    $response->assertStatus(403)
+             ->assertJsonPath('code', 'BID_NOT_ALLOWED')
+             ->assertJsonPath('reason', 'missing_payment')
              ->assertJsonPath('success', false);
 });
 
-it('bid is blocked with 402 when card is expired', function () {
+it('bid is blocked when card is expired (missing_payment reason)', function () {
     [$auction, $lot] = makePaymentTestLot();
 
     $buyer = User::factory()->create(['status' => 'active']);
@@ -277,8 +278,9 @@ it('bid is blocked with 402 when card is expired', function () {
             'amount' => 1000,
         ]);
 
-    $response->assertStatus(402)
-             ->assertJsonPath('code', 'PAYMENT_REQUIRED');
+    $response->assertStatus(403)
+             ->assertJsonPath('code', 'BID_NOT_ALLOWED')
+             ->assertJsonPath('reason', 'missing_payment');
 });
 
 it('bid succeeds with a valid payment method', function () {
@@ -295,7 +297,7 @@ it('bid succeeds with a valid payment method', function () {
     $response->assertStatus(200);
 });
 
-it('proxy bid is blocked with 402 when user has no card', function () {
+it('proxy bid is blocked with BID_NOT_ALLOWED/missing_payment when user has no card', function () {
     [$auction, $lot] = makePaymentTestLot();
 
     $buyer = User::factory()->create(['status' => 'active']);
@@ -305,8 +307,9 @@ it('proxy bid is blocked with 402 when user has no card', function () {
             'max_amount' => 2000,
         ]);
 
-    $response->assertStatus(402)
-             ->assertJsonPath('code', 'PAYMENT_REQUIRED');
+    $response->assertStatus(403)
+             ->assertJsonPath('code', 'BID_NOT_ALLOWED')
+             ->assertJsonPath('reason', 'missing_payment');
 });
 
 it('proxy bid succeeds with a valid payment method', function () {

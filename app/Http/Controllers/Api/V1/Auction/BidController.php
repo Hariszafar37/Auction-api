@@ -10,6 +10,7 @@ use App\Http\Resources\Auction\AuctionLotResource;
 use App\Http\Resources\Auction\BidResource;
 use App\Models\Auction;
 use App\Models\AuctionLot;
+use App\Exceptions\BidNotAllowedException;
 use App\Services\Auction\AuctionLotService;
 use App\Services\Auction\BiddingService;
 use Illuminate\Http\JsonResponse;
@@ -35,12 +36,11 @@ class BidController extends Controller
 
         $user = $request->user();
 
-        if ($user->status !== 'active') {
-            return $this->error('Your account must be active to place bids.', 403, 'account_inactive');
-        }
-
         try {
             $bid = $this->biddingService->placeBid($lot, $user, $request->integer('amount'));
+        } catch (BidNotAllowedException $e) {
+            // Self-renders to 403 with { code: 'BID_NOT_ALLOWED', reason }
+            throw $e;
         } catch (ValidationException $e) {
             return $this->error('Bid validation failed.', 422, 'bid_invalid', $e->errors());
         }
@@ -66,12 +66,10 @@ class BidController extends Controller
 
         $user = $request->user();
 
-        if ($user->status !== 'active') {
-            return $this->error('Your account must be active to place bids.', 403, 'account_inactive');
-        }
-
         try {
             $result = $this->biddingService->setProxyBid($lot, $user, $request->integer('max_amount'));
+        } catch (BidNotAllowedException $e) {
+            throw $e;
         } catch (ValidationException $e) {
             return $this->error('Proxy bid validation failed.', 422, 'bid_invalid', $e->errors());
         }
@@ -99,8 +97,13 @@ class BidController extends Controller
 
         $user = $request->user();
 
-        if ($user->status !== 'active') {
-            return $this->error('Your account must be active to place bids.', 403, 'account_inactive');
+        // Unified eligibility gate — same rule set as placeBid/setProxyBid.
+        // AuctionLotService handles this path, so the check lives here rather
+        // than in BiddingService. See User::canBid().
+        if (! $user->canBid()) {
+            throw new BidNotAllowedException(
+                reason: $user->getBidIneligibilityReason() ?? 'not_eligible',
+            );
         }
 
         try {
