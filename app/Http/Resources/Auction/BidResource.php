@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Auction;
 
+use App\Support\FormatsDates;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class BidResource extends JsonResource
 {
+    use FormatsDates;
+
     public function toArray(Request $request): array
     {
         $authUser  = $request->user();
@@ -18,7 +21,7 @@ class BidResource extends JsonResource
             'amount'     => $this->amount,
             'type'       => $this->type->value,
             'is_winning' => $this->is_winning,
-            'placed_at'  => $this->placed_at->toIso8601String(),
+            'placed_at'  => $this->safeIso($this->placed_at),
 
             // Only show bidder identity to admin or the bidder themselves
             'bidder_id'  => $this->when($isMine || $isAdmin, $this->user_id),

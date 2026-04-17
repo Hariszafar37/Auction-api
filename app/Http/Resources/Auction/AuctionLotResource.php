@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Auction;
 
+use App\Support\FormatsDates;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class AuctionLotResource extends JsonResource
 {
+    use FormatsDates;
+
     public function toArray(Request $request): array
     {
         $isAdmin = $request->user()?->hasRole('admin');
@@ -35,7 +38,7 @@ class AuctionLotResource extends JsonResource
             'reserve_price'     => $this->when($isAdmin, $this->reserve_price),
 
             // Countdown
-            'countdown_ends_at'    => $this->countdown_ends_at?->toIso8601String(),
+            'countdown_ends_at'    => $this->safeIso($this->countdown_ends_at),
             'countdown_seconds'    => $this->countdown_seconds,
             'countdown_extensions' => $this->countdown_extensions,
 
@@ -45,13 +48,13 @@ class AuctionLotResource extends JsonResource
             'requires_seller_approval' => $this->requires_seller_approval,
             'seller_decision_deadline' => $this->when(
                 $isAdmin || $this->status->value === 'if_sale',
-                $this->seller_decision_deadline?->toIso8601String()
+                $this->safeIso($this->seller_decision_deadline)
             ),
 
             // Sale outcome
             'sold_price'  => $this->when($this->status->value === 'sold', $this->sold_price),
-            'opened_at'   => $this->opened_at?->toIso8601String(),
-            'closed_at'   => $this->closed_at?->toIso8601String(),
+            'opened_at'   => $this->safeIso($this->opened_at),
+            'closed_at'   => $this->safeIso($this->closed_at),
 
             'vehicle' => new VehicleResource($this->whenLoaded('vehicle')),
             'bids'    => BidResource::collection($this->whenLoaded('bids')),

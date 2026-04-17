@@ -2,35 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Support\FormatsDates;
 use App\Support\SignedFileUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class UserResource extends JsonResource
 {
-    /**
-     * Safely convert a date value to an ISO-8601 string.
-     *
-     * Handles three cases without throwing:
-     *   - Carbon instance  → direct call
-     *   - string / numeric → Carbon::parse() then format
-     *   - null             → null
-     *
-     * This guards against legacy rows where a datetime column was stored
-     * as a plain string before proper model casting was in place.
-     */
-    private function safeIso(mixed $date): ?string
-    {
-        if ($date === null) {
-            return null;
-        }
-
-        if ($date instanceof \Carbon\CarbonInterface) {
-            return $date->toIso8601String();
-        }
-
-        return \Carbon\Carbon::parse($date)->toIso8601String();
-    }
+    use FormatsDates;
 
     public function toArray(Request $request): array
     {
