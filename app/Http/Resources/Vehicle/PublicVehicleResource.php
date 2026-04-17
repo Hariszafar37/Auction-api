@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Vehicle;
 
+use App\Support\FormatsDates;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -17,6 +18,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class PublicVehicleResource extends JsonResource
 {
+    use FormatsDates;
+
     public function toArray(Request $request): array
     {
         return [
@@ -53,7 +56,7 @@ class PublicVehicleResource extends JsonResource
                     'lot_number'        => $lot->lot_number,
                     'auction_id'        => $lot->auction_id,
                     'auction_title'     => optional($lot->auction)->title,
-                    'auction_starts_at' => optional($lot->auction)?->starts_at?->toIso8601String(),
+                    'auction_starts_at' => $this->safeIso(optional($lot->auction)?->starts_at),
                     'current_bid'       => $lot->current_bid,
                     'next_minimum_bid'  => $lot->nextMinimumBid(),
                     'status'            => $lot->status->value,
@@ -75,7 +78,7 @@ class PublicVehicleResource extends JsonResource
                     'order'      => $m->order_column,
                 ])->all(),
 
-            'created_at' => $this->created_at->toIso8601String(),
+            'created_at' => $this->safeIso($this->created_at),
         ];
     }
 }

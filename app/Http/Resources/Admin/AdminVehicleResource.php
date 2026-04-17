@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Support\FormatsDates;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class AdminVehicleResource extends JsonResource
 {
+    use FormatsDates;
+
     public function toArray(Request $request): array
     {
         return [
@@ -28,7 +31,7 @@ class AdminVehicleResource extends JsonResource
             'title_state'      => $this->title_state,
             'title_received'   => (bool) $this->title_received,
             'status'           => $this->status,
-            'created_at'       => $this->created_at->toIso8601String(),
+            'created_at'       => $this->safeIso($this->created_at),
             'seller'           => $this->whenLoaded('seller', fn () => [
                 'id'    => $this->seller->id,
                 'name'  => $this->seller->name,
