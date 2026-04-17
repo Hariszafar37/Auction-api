@@ -8,6 +8,30 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class UserResource extends JsonResource
 {
+    /**
+     * Safely convert a date value to an ISO-8601 string.
+     *
+     * Handles three cases without throwing:
+     *   - Carbon instance  → direct call
+     *   - string / numeric → Carbon::parse() then format
+     *   - null             → null
+     *
+     * This guards against legacy rows where a datetime column was stored
+     * as a plain string before proper model casting was in place.
+     */
+    private function safeIso(mixed $date): ?string
+    {
+        if ($date === null) {
+            return null;
+        }
+
+        if ($date instanceof \Carbon\CarbonInterface) {
+            return $date->toIso8601String();
+        }
+
+        return \Carbon\Carbon::parse($date)->toIso8601String();
+    }
+
     public function toArray(Request $request): array
     {
         return [
@@ -19,9 +43,9 @@ class UserResource extends JsonResource
             'primary_phone'           => $this->primary_phone,
             'secondary_phone'         => $this->secondary_phone,
             'consent_marketing'       => $this->consent_marketing,
-            'agreed_terms_at'         => $this->agreed_terms_at?->toIso8601String(),
+            'agreed_terms_at'         => $this->safeIso($this->agreed_terms_at),
             'status'                  => $this->status,
-            'email_verified_at'       => $this->email_verified_at?->toIso8601String(),
+            'email_verified_at'       => $this->safeIso($this->email_verified_at),
             'roles'                   => $this->getRoleNames(),
 
             // Activation
@@ -29,7 +53,7 @@ class UserResource extends JsonResource
             'account_intent'          => $this->account_intent,
             'activation_status'       => $this->getActivationStatus(),
             'activation_required'     => $this->isActivationRequired(),
-            'activation_completed_at' => $this->activation_completed_at?->toIso8601String(),
+            'activation_completed_at' => $this->safeIso($this->activation_completed_at),
 
             // Payment-method sub-flag — the frontend uses this to know
             // whether to deep-link into /payment-information. Backed by
@@ -115,14 +139,14 @@ class UserResource extends JsonResource
                 'status'        => $doc->status ?? 'pending_review',
                 'admin_notes'   => $doc->admin_notes,
                 'reviewed_by'   => $doc->reviewed_by,
-                'reviewed_at'   => $doc->reviewed_at?->toIso8601String(),
+                'reviewed_at'   => $this->safeIso($doc->reviewed_at),
                 // Signed streaming URL — see App\Support\SignedFileUrl. Passing
                 // the current authenticated user triggers a mint-time policy
                 // check (UserDocumentPolicy) AND embeds viewer_id into the
                 // signed URL for download-time re-verification. Returns null
                 // for viewers who cannot see the file.
                 'url'           => SignedFileUrl::userDocument($doc, $request->user()),
-                'uploaded_at'   => $doc->created_at->toIso8601String(),
+                'uploaded_at'   => $this->safeIso($doc->created_at),
             ])),
 
             // Business approval tracking (loaded on demand)
@@ -131,15 +155,15 @@ class UserResource extends JsonResource
                 'entity_type'         => $this->businessProfile->entity_type,
                 'approval_status'     => $this->businessProfile->approval_status,
                 'rejection_reason'    => $this->businessProfile->rejection_reason,
-                'reviewed_at'         => $this->businessProfile->reviewed_at?->toIso8601String(),
+                'reviewed_at'         => $this->safeIso($this->businessProfile->reviewed_at),
             ] : null),
 
             // Individual seller approval tracking (loaded on demand)
             'seller_profile'          => $this->whenLoaded('sellerProfile', fn () => $this->sellerProfile ? [
                 'approval_status'   => $this->sellerProfile->approval_status,
                 'rejection_reason'  => $this->sellerProfile->rejection_reason,
-                'reviewed_at'       => $this->sellerProfile->reviewed_at?->toIso8601String(),
-                'applied_at'        => $this->sellerProfile->created_at->toIso8601String(),
+                'reviewed_at'       => $this->safeIso($this->sellerProfile->reviewed_at),
+                'applied_at'        => $this->safeIso($this->sellerProfile->created_at),
             ] : null),
 
             // Legacy profile data (kept for admin compatibility)
@@ -148,10 +172,10 @@ class UserResource extends JsonResource
                 'dealer_license'  => $this->dealerProfile->dealer_license,
                 'approval_status' => $this->dealerProfile->approval_status,
                 'rejection_reason'=> $this->dealerProfile->rejection_reason,
-                'reviewed_at'     => $this->dealerProfile->reviewed_at?->toIso8601String(),
+                'reviewed_at'     => $this->safeIso($this->dealerProfile->reviewed_at),
             ] : null),
 
-            'created_at'              => $this->created_at->toIso8601String(),
+            'created_at'              => $this->safeIso($this->created_at),
         ];
     }
 }

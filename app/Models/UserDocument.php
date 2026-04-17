@@ -23,6 +23,13 @@ class UserDocument extends Model
         'reviewed_at',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'reviewed_at' => 'datetime',
+        ];
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

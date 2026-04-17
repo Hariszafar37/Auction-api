@@ -255,3 +255,102 @@ it('non-admin is blocked by role middleware before reaching permission check', f
         ->getJson('/api/v1/admin/dealers/pending')
         ->assertStatus(403);
 });
+
+// ── User Detail — Date Casting Regression ─────────────────────────────────
+// Covers the bug: "Call to a member function toIso8601String() on string"
+// Root cause: UserDocument.reviewed_at had no cast, so it was returned as a
+// raw string instead of a Carbon instance, which caused toIso8601String() to
+// fail for any user whose documents had been reviewed.
+
+it('admin can fetch user detail with no documents (baseline)', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->assignRole('buyer');
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('data.id', $user->id);
+});
+
+it('admin can fetch user detail when documents have null reviewed_at', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->assignRole('buyer');
+
+    // Document uploaded but not yet reviewed — reviewed_at is null
+    $user->documents()->create([
+        'type'          => 'id',
+        'status'        => 'pending_review',
+        'file_path'     => 'documents/test.jpg',
+        'disk'          => 'public',
+        'original_name' => 'test.jpg',
+        'mime_type'     => 'image/jpeg',
+        'size_bytes'    => 1024,
+        'reviewed_at'   => null,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('data.documents.0.reviewed_at', null);
+});
+
+it('admin can fetch user detail when documents have a Carbon reviewed_at', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->assignRole('buyer');
+
+    $reviewedAt = now()->setMicroseconds(0);
+
+    $user->documents()->create([
+        'type'          => 'id',
+        'status'        => 'approved',
+        'file_path'     => 'documents/test.jpg',
+        'disk'          => 'public',
+        'original_name' => 'test.jpg',
+        'mime_type'     => 'image/jpeg',
+        'size_bytes'    => 1024,
+        'reviewed_by'   => $admin->id,
+        'reviewed_at'   => $reviewedAt,
+    ]);
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}")
+        ->assertStatus(200);
+
+    // Should be a valid ISO-8601 string — not null, not an exception
+    $reviewedAtStr = $response->json('data.documents.0.reviewed_at');
+    expect($reviewedAtStr)->toBeString()
+        ->and(\Carbon\Carbon::parse($reviewedAtStr)->toIso8601String())->toBe($reviewedAtStr);
+});
+
+it('user detail returns valid ISO-8601 for all date fields — no toIso8601String exception', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create([
+        'status'             => 'active',
+        'email_verified_at'  => now(),
+        'agreed_terms_at'    => now(),
+    ]);
+    $user->assignRole('buyer');
+
+    // Reviewed document — this is the exact case that triggered the bug
+    $user->documents()->create([
+        'type'          => 'dealer_license',
+        'status'        => 'approved',
+        'file_path'     => 'documents/license.pdf',
+        'disk'          => 'public',
+        'original_name' => 'license.pdf',
+        'mime_type'     => 'application/pdf',
+        'size_bytes'    => 20480,
+        'reviewed_by'   => $admin->id,
+        'reviewed_at'   => now(),
+    ]);
+
+    // Must not throw — previously crashed with "Call to a member function
+    // toIso8601String() on string" when reviewed_at was not cast.
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('data.id', $user->id);
+});
