@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\Api\V1\Activation\ActivationController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
+use App\Http\Controllers\Api\V1\Admin\AdminFeeController;
+use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
+use App\Http\Controllers\Api\V1\Payment\InvoiceController;
+use App\Http\Controllers\Api\V1\Payment\PaymentController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
 use App\Http\Controllers\Api\V1\Admin\AdminGovController;
@@ -152,6 +156,15 @@ Route::prefix('v1')->group(function () {
         // My won lots
         Route::get('/my/won', [WonLotsController::class, 'index'])->name('my.won');
 
+        // My invoices
+        Route::prefix('my/invoices')->name('my.invoices.')->group(function () {
+            Route::get('/',                      [InvoiceController::class, 'index'])->name('index');
+            Route::get('/{invoice}',             [InvoiceController::class, 'show'])->name('show');
+            Route::get('/{invoice}/pdf',         [InvoiceController::class, 'pdf'])->name('pdf');
+            Route::post('/{invoice}/pay',        [PaymentController::class, 'pay'])->name('pay');
+            Route::post('/{invoice}/pay/confirm', [PaymentController::class, 'confirm'])->name('pay.confirm');
+        });
+
         /*
         |----------------------------------------------------------------------
         | Public Vehicle Inventory
@@ -294,6 +307,25 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{user}/invite',    [AdminGovController::class, 'sendInvite'])->name('invite');
                 Route::post('/{user}/approve',   [AdminGovController::class, 'approve'])->name('approve');
                 Route::post('/{user}/reject',    [AdminGovController::class, 'reject'])->name('reject');
+            });
+
+            // Fee configuration management
+            Route::prefix('fees')->name('fees.')->group(function () {
+                Route::get('/preview',   [AdminFeeController::class, 'preview'])->name('preview');
+                Route::get('/',          [AdminFeeController::class, 'index'])->name('index');
+                Route::post('/',         [AdminFeeController::class, 'store'])->name('store');
+                Route::get('/{fee}',     [AdminFeeController::class, 'show'])->name('show');
+                Route::patch('/{fee}',   [AdminFeeController::class, 'update'])->name('update');
+                Route::delete('/{fee}',  [AdminFeeController::class, 'destroy'])->name('destroy');
+            });
+
+            // Invoice management
+            Route::prefix('invoices')->name('invoices.')->group(function () {
+                Route::get('/',                               [AdminInvoiceController::class, 'index'])->name('index');
+                Route::get('/{invoice}',                     [AdminInvoiceController::class, 'show'])->name('show');
+                Route::post('/{invoice}/void',               [AdminInvoiceController::class, 'void'])->name('void');
+                Route::post('/{invoice}/record-payment',     [PaymentController::class, 'recordOfflineAsAdmin'])->name('record-payment');
+                Route::patch('/{invoice}/storage',           [PaymentController::class, 'updateStorage'])->name('storage');
             });
 
             // Lot-level operations (auctioneer controls)

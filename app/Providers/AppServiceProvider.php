@@ -18,6 +18,7 @@ use App\Listeners\Account\SendPOARejectedNotification;
 use App\Listeners\Auction\SendAuctionWonNotification;
 use App\Listeners\Auction\SendBidPlacedNotification;
 use App\Listeners\Auction\SendOutbidEmailNotification;
+use App\Listeners\Payment\CreateInvoiceForWonLot;
 use App\Models\PowerOfAttorney;
 use App\Models\UserDocument;
 use App\Policies\PowerOfAttorneyPolicy;
@@ -64,5 +65,6 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(OutbidNotification::class, SendOutbidEmailNotification::class);
         Event::listen(BidPlaced::class, SendBidPlacedNotification::class);
         Event::listen(UserWonLot::class, SendAuctionWonNotification::class);
+        Event::listen(UserWonLot::class, CreateInvoiceForWonLot::class);
     }
 }
