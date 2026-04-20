@@ -126,6 +126,7 @@ class InvoiceService
                 $buyer->update(['stripe_customer_id' => $customer->id]);
             }
 
+            // FIX 1: idempotency key prevents double-charge if this fires twice
             $pi = $stripe->paymentIntents->create([
                 'amount'         => (int) round($depositAmount * 100),
                 'currency'       => 'usd',
@@ -138,8 +139,11 @@ class InvoiceService
                     'type'           => 'deposit',
                 ],
                 'description' => "Deposit hold — Invoice {$invoice->invoice_number}",
+            ], [
+                'idempotency_key' => 'deposit_pi_' . $invoice->id,
             ]);
 
+            // FIX 3: status='authorized' tracks deposit PI lifecycle separately from buyer payments
             InvoicePayment::create([
                 'invoice_id'           => $invoice->id,
                 'user_id'              => $buyer->id,
@@ -147,19 +151,19 @@ class InvoiceService
                 'amount'               => $depositAmount,
                 'reference'            => $pi->id,
                 'stripe_client_secret' => $pi->client_secret,
-                'status'               => 'pending',
+                'status'               => 'authorized',
             ]);
 
             $invoice->update([
                 'stripe_deposit_intent_id' => $pi->id,
-                'deposit_status'           => 'pending',
+                'deposit_status'           => 'authorized',
             ]);
         } catch (\Throwable $e) {
             Log::warning('Failed to initiate deposit hold for invoice', [
                 'invoice_id' => $invoice->id,
                 'error'      => $e->getMessage(),
             ]);
-            $invoice->update(['deposit_status' => 'pending_manual']);
+            $invoice->update(['deposit_status' => 'failed']);
         }
     }
 

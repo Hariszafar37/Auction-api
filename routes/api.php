@@ -162,11 +162,13 @@ Route::prefix('v1')->group(function () {
 
         // My invoices
         Route::prefix('my/invoices')->name('my.invoices.')->group(function () {
-            Route::get('/',                      [InvoiceController::class, 'index'])->name('index');
-            Route::get('/{invoice}',             [InvoiceController::class, 'show'])->name('show');
-            Route::get('/{invoice}/pdf',         [InvoiceController::class, 'pdf'])->name('pdf');
-            Route::post('/{invoice}/pay',        [PaymentController::class, 'pay'])->name('pay');
-            Route::post('/{invoice}/pay/{payment}/confirm', [PaymentController::class, 'confirm'])->name('pay.confirm');
+            Route::get('/',                           [InvoiceController::class, 'index'])->name('index');
+            Route::get('/{invoice}',                  [InvoiceController::class, 'show'])->name('show');
+            Route::get('/{invoice}/pdf',              [InvoiceController::class, 'pdf'])->name('pdf');
+            // FIX 2: sole PI creation endpoint — webhook is the only place that marks paid
+            Route::post('/{invoice}/payment-intent',  [PaymentController::class, 'createPaymentIntent'])->name('payment-intent');
+            // Offline (cash/check) payment recording — admin only
+            Route::post('/{invoice}/pay',             [PaymentController::class, 'pay'])->name('pay');
         });
 
         /*

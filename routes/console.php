@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\AccrueStorageFees;
+use App\Console\Commands\CheckDepositExpiry;
 use App\Console\Commands\MarkOverdueInvoices;
 use App\Jobs\Auction\ProcessIfSaleExpiry;
 use App\Jobs\Auction\ProcessLotClose;
@@ -39,3 +40,6 @@ Schedule::command(MarkOverdueInvoices::class)->dailyAt('00:10');
 
 // Accrue daily storage fees on open invoices
 Schedule::command(AccrueStorageFees::class)->dailyAt('00:05');
+
+// Warn about deposit PIs approaching Stripe 7-day expiry
+Schedule::command(CheckDepositExpiry::class)->dailyAt('08:00');

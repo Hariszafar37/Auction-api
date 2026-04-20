@@ -10,6 +10,8 @@ use App\Models\InvoicePayment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Stripe\StripeClient;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminInvoiceController extends Controller
@@ -59,6 +61,20 @@ class AdminInvoiceController extends Controller
     {
         if ($invoice->isPaid()) {
             return $this->error('Paid invoices cannot be voided.', 422, 'invoice_paid');
+        }
+
+        // FIX 3: cancel the deposit hold on Stripe when invoice is voided
+        if ($invoice->stripe_deposit_intent_id && $invoice->deposit_status === 'authorized') {
+            try {
+                $stripe = new StripeClient(config('services.stripe.secret'));
+                $stripe->paymentIntents->cancel($invoice->stripe_deposit_intent_id);
+                $invoice->update(['deposit_status' => 'cancelled']);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to cancel deposit PI on void', [
+                    'invoice_id' => $invoice->id,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
         }
 
         $invoice->update([

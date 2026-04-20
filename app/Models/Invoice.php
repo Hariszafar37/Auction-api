@@ -34,6 +34,7 @@ class Invoice extends Model
         'due_at',
         'paid_at',
         'voided_at',
+        'deposit_captured_at',
         'notes',
     ];
 
@@ -55,6 +56,7 @@ class Invoice extends Model
         'paid_at'                  => 'datetime',
         'voided_at'                => 'datetime',
         'storage_last_accrued_at'  => 'datetime',
+        'deposit_captured_at'      => 'datetime',
     ];
 
     // ─── Relationships ────────────────────────────────────────────────────────────
