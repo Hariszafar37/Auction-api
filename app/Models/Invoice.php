@@ -22,11 +22,15 @@ class Invoice extends Model
         'tags_amount',
         'storage_days',
         'storage_fee_amount',
+        'storage_fee_total',
+        'storage_last_accrued_at',
         'total_amount',
         'amount_paid',
         'balance_due',
         'status',
         'fee_snapshot',
+        'stripe_deposit_intent_id',
+        'deposit_status',
         'due_at',
         'paid_at',
         'voided_at',
@@ -34,21 +38,23 @@ class Invoice extends Model
     ];
 
     protected $casts = [
-        'sale_price'          => 'integer',
-        'deposit_amount'      => 'decimal:2',
-        'buyer_fee_amount'    => 'decimal:2',
-        'tax_amount'          => 'decimal:2',
-        'tags_amount'         => 'decimal:2',
-        'storage_fee_amount'  => 'decimal:2',
-        'total_amount'        => 'decimal:2',
-        'amount_paid'         => 'decimal:2',
-        'balance_due'         => 'decimal:2',
-        'storage_days'        => 'integer',
-        'status'              => InvoiceStatus::class,
-        'fee_snapshot'        => 'array',
-        'due_at'              => 'datetime',
-        'paid_at'             => 'datetime',
-        'voided_at'           => 'datetime',
+        'sale_price'               => 'integer',
+        'deposit_amount'           => 'decimal:2',
+        'buyer_fee_amount'         => 'decimal:2',
+        'tax_amount'               => 'decimal:2',
+        'tags_amount'              => 'decimal:2',
+        'storage_fee_amount'       => 'decimal:2',
+        'storage_fee_total'        => 'decimal:2',
+        'total_amount'             => 'decimal:2',
+        'amount_paid'              => 'decimal:2',
+        'balance_due'              => 'decimal:2',
+        'storage_days'             => 'integer',
+        'status'                   => InvoiceStatus::class,
+        'fee_snapshot'             => 'array',
+        'due_at'                   => 'datetime',
+        'paid_at'                  => 'datetime',
+        'voided_at'                => 'datetime',
+        'storage_last_accrued_at'  => 'datetime',
     ];
 
     // ─── Relationships ────────────────────────────────────────────────────────────
@@ -80,7 +86,15 @@ class Invoice extends Model
 
     public function completedPayments(): HasMany
     {
-        return $this->hasMany(InvoicePayment::class)->where('status', 'completed');
+        // Count 'completed' (Stripe) and 'verified' (approved offline) payments
+        return $this->hasMany(InvoicePayment::class)
+            ->whereIn('status', ['completed', 'verified']);
+    }
+
+    public function pendingOfflinePayments(): HasMany
+    {
+        return $this->hasMany(InvoicePayment::class)
+            ->where('status', 'pending_verification');
     }
 
     // ─── Scopes ──────────────────────────────────────────────────────────────────
@@ -92,7 +106,11 @@ class Invoice extends Model
 
     public function scopeOpen($query)
     {
-        return $query->whereIn('status', [InvoiceStatus::Pending->value, InvoiceStatus::Partial->value]);
+        return $query->whereIn('status', [
+            InvoiceStatus::Pending->value,
+            InvoiceStatus::Partial->value,
+            InvoiceStatus::Overdue->value,
+        ]);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -107,6 +125,11 @@ class Invoice extends Model
         return $this->status->isOpen();
     }
 
+    public function isOverdue(): bool
+    {
+        return $this->due_at && $this->due_at->isPast() && ! $this->isPaid();
+    }
+
     public function recalculateBalance(): void
     {
         $paid = $this->completedPayments()->sum('amount');
@@ -115,8 +138,8 @@ class Invoice extends Model
         $this->balance_due = max(0, (float) $this->total_amount - (float) $paid);
 
         if ($this->balance_due <= 0) {
-            $this->status   = InvoiceStatus::Paid;
-            $this->paid_at  = $this->paid_at ?? now();
+            $this->status  = InvoiceStatus::Paid;
+            $this->paid_at = $this->paid_at ?? now();
         } elseif ((float) $paid > 0) {
             $this->status = InvoiceStatus::Partial;
         }

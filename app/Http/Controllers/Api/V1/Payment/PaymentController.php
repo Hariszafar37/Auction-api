@@ -16,9 +16,6 @@ class PaymentController extends Controller
 {
     /**
      * POST /my/invoices/{invoice}/pay
-     *
-     * - stripe_card: creates a Stripe PaymentIntent; returns client_secret for frontend confirmation
-     * - cash/check: admin-only; records payment and marks invoice accordingly
      */
     public function pay(InitiatePaymentRequest $request, Invoice $invoice): JsonResponse
     {
@@ -30,14 +27,13 @@ class PaymentController extends Controller
             return $this->error('This invoice is not open for payment.', 422, 'invoice_not_open');
         }
 
-        $method = $request->input('method');
         $amount = (float) $request->input('amount');
 
         if ($amount > (float) $invoice->balance_due) {
             return $this->error('Payment amount exceeds balance due.', 422, 'amount_exceeds_balance');
         }
 
-        return match($method) {
+        return match($request->input('method')) {
             'stripe_card' => $this->initiateStripePayment($request, $invoice, $amount),
             'cash', 'check', 'other' => $this->recordOfflinePayment($request, $invoice, $amount),
             default => $this->error('Unsupported payment method.', 422),
@@ -62,10 +58,7 @@ class PaymentController extends Controller
         }
 
         DB::transaction(function () use ($payment, $invoice) {
-            $payment->update([
-                'status'       => 'completed',
-                'processed_at' => now(),
-            ]);
+            $payment->update(['status' => 'completed', 'processed_at' => now()]);
             $invoice->recalculateBalance();
         });
 
@@ -75,11 +68,9 @@ class PaymentController extends Controller
         );
     }
 
-    // ─── Admin: record offline payment ───────────────────────────────────────────
-
     /**
      * POST /admin/invoices/{invoice}/record-payment
-     * Admin records a cash or check payment on behalf of a buyer.
+     * Admin records a cash or check payment — creates pending_verification record.
      */
     public function recordOfflineAsAdmin(InitiatePaymentRequest $request, Invoice $invoice): JsonResponse
     {
@@ -89,8 +80,6 @@ class PaymentController extends Controller
 
         return $this->recordOfflinePayment($request, $invoice, (float) $request->input('amount'));
     }
-
-    // ─── Admin: update storage days ──────────────────────────────────────────────
 
     /**
      * PATCH /admin/invoices/{invoice}/storage
@@ -115,7 +104,7 @@ class PaymentController extends Controller
         $stripe = new StripeClient(config('services.stripe.secret'));
 
         $pi = $stripe->paymentIntents->create([
-            'amount'   => (int) round($amount * 100), // Stripe uses cents
+            'amount'   => (int) round($amount * 100),
             'currency' => 'usd',
             'metadata' => [
                 'invoice_id'     => $invoice->id,
@@ -148,26 +137,20 @@ class PaymentController extends Controller
             return $this->error('Offline payments must be recorded by an admin.', 403);
         }
 
-        $payment = DB::transaction(function () use ($request, $invoice, $amount) {
-            $p = InvoicePayment::create([
-                'invoice_id'   => $invoice->id,
-                'user_id'      => $invoice->buyer_id,
-                'method'       => $request->input('method'),
-                'amount'       => $amount,
-                'reference'    => $request->input('reference'),
-                'status'       => 'completed',
-                'notes'        => $request->input('notes'),
-                'processed_at' => now(),
-                'processed_by' => $request->user()->id,
-            ]);
-
-            $invoice->recalculateBalance();
-            return $p;
-        });
+        $payment = InvoicePayment::create([
+            'invoice_id'   => $invoice->id,
+            'user_id'      => $invoice->buyer_id,
+            'method'       => $request->input('method'),
+            'amount'       => $amount,
+            'reference'    => $request->input('reference'),
+            'status'       => 'pending_verification',
+            'notes'        => $request->input('notes'),
+            'processed_by' => $request->user()->id,
+        ]);
 
         return $this->success(
             new InvoicePaymentResource($payment),
-            'Payment recorded.',
+            'Payment recorded. Awaiting admin verification.',
             201
         );
     }

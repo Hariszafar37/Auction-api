@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Activation\ActivationController;
+use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
 use App\Http\Controllers\Api\V1\Admin\AdminFeeController;
 use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
@@ -35,6 +36,9 @@ Route::prefix('v1')->group(function () {
     | Health
     |--------------------------------------------------------------------------
     */
+    // Stripe webhook — must be outside auth:sanctum (raw body required)
+    Route::post('/webhook/stripe', [WebhookController::class, 'stripe']);
+
     Route::get('/health', function () {
         return response()->json([
             'status'      => 'ok',
@@ -162,7 +166,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/{invoice}',             [InvoiceController::class, 'show'])->name('show');
             Route::get('/{invoice}/pdf',         [InvoiceController::class, 'pdf'])->name('pdf');
             Route::post('/{invoice}/pay',        [PaymentController::class, 'pay'])->name('pay');
-            Route::post('/{invoice}/pay/confirm', [PaymentController::class, 'confirm'])->name('pay.confirm');
+            Route::post('/{invoice}/pay/{payment}/confirm', [PaymentController::class, 'confirm'])->name('pay.confirm');
         });
 
         /*
@@ -320,12 +324,16 @@ Route::prefix('v1')->group(function () {
             });
 
             // Invoice management
+            // NOTE: /export registered BEFORE /{invoice} to avoid routing conflict.
             Route::prefix('invoices')->name('invoices.')->group(function () {
-                Route::get('/',                               [AdminInvoiceController::class, 'index'])->name('index');
-                Route::get('/{invoice}',                     [AdminInvoiceController::class, 'show'])->name('show');
-                Route::post('/{invoice}/void',               [AdminInvoiceController::class, 'void'])->name('void');
-                Route::post('/{invoice}/record-payment',     [PaymentController::class, 'recordOfflineAsAdmin'])->name('record-payment');
-                Route::patch('/{invoice}/storage',           [PaymentController::class, 'updateStorage'])->name('storage');
+                Route::get('/export',                                    [AdminInvoiceController::class, 'export'])->name('export');
+                Route::get('/',                                          [AdminInvoiceController::class, 'index'])->name('index');
+                Route::get('/{invoice}',                                 [AdminInvoiceController::class, 'show'])->name('show');
+                Route::post('/{invoice}/void',                           [AdminInvoiceController::class, 'void'])->name('void');
+                Route::post('/{invoice}/record-payment',                 [PaymentController::class, 'recordOfflineAsAdmin'])->name('record-payment');
+                Route::patch('/{invoice}/storage',                       [PaymentController::class, 'updateStorage'])->name('storage');
+                Route::post('/{invoice}/payments/{payment}/approve',     [AdminInvoiceController::class, 'approvePayment'])->name('payments.approve');
+                Route::post('/{invoice}/payments/{payment}/reject',      [AdminInvoiceController::class, 'rejectPayment'])->name('payments.reject');
             });
 
             // Lot-level operations (auctioneer controls)

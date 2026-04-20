@@ -66,7 +66,7 @@ class InvoiceResource extends JsonResource
             // Buyer info — only for admin
             'buyer' => $this->when($isAdmin && $this->relationLoaded('buyer'), fn () => [
                 'id'    => $this->buyer->id,
-                'name'  => $this->buyer->full_name,
+                'name'  => $this->buyer->name,
                 'email' => $this->buyer->email,
             ]),
         ];

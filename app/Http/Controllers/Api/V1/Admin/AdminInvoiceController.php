@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Payment\InvoicePaymentResource;
 use App\Http\Resources\Payment\InvoiceResource;
 use App\Models\Invoice;
+use App\Models\InvoicePayment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminInvoiceController extends Controller
 {
@@ -58,11 +62,108 @@ class AdminInvoiceController extends Controller
         }
 
         $invoice->update([
-            'status'     => 'void',
-            'voided_at'  => now(),
-            'notes'      => request()->input('notes', $invoice->notes),
+            'status'    => 'void',
+            'voided_at' => now(),
+            'notes'     => request()->input('notes', $invoice->notes),
         ]);
 
         return $this->success(new InvoiceResource($invoice->fresh()), 'Invoice voided.');
+    }
+
+    // ─── FIX 4: Offline payment approve / reject ─────────────────────────────────
+
+    /**
+     * POST /admin/invoices/{invoice}/payments/{payment}/approve
+     */
+    public function approvePayment(Invoice $invoice, InvoicePayment $payment): JsonResponse
+    {
+        if ($payment->invoice_id !== $invoice->id) {
+            return $this->error('Payment does not belong to this invoice.', 422);
+        }
+
+        if ($payment->status !== 'pending_verification') {
+            return $this->error('Only payments pending verification can be approved.', 422);
+        }
+
+        DB::transaction(function () use ($payment, $invoice) {
+            $payment->update([
+                'status'       => 'verified',
+                'processed_at' => now(),
+                'processed_by' => request()->user()->id,
+            ]);
+            $invoice->recalculateBalance();
+        });
+
+        return $this->success(
+            new InvoiceResource($invoice->fresh()->load(['lot', 'auction', 'vehicle', 'buyer', 'payments'])),
+            'Payment approved.'
+        );
+    }
+
+    /**
+     * POST /admin/invoices/{invoice}/payments/{payment}/reject
+     */
+    public function rejectPayment(Invoice $invoice, InvoicePayment $payment): JsonResponse
+    {
+        if ($payment->invoice_id !== $invoice->id) {
+            return $this->error('Payment does not belong to this invoice.', 422);
+        }
+
+        if ($payment->status !== 'pending_verification') {
+            return $this->error('Only payments pending verification can be rejected.', 422);
+        }
+
+        $payment->update([
+            'status'       => 'rejected',
+            'processed_at' => now(),
+            'processed_by' => request()->user()->id,
+            'notes'        => request()->input('reason', $payment->notes),
+        ]);
+
+        return $this->success(
+            new InvoicePaymentResource($payment->fresh()),
+            'Payment rejected.'
+        );
+    }
+
+    // ─── FIX 10: CSV export ───────────────────────────────────────────────────────
+
+    /**
+     * GET /admin/invoices/export
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $status = $request->query('status');
+
+        $query = Invoice::with(['buyer', 'lot'])
+            ->when($status, fn ($q) => $q->where('status', $status))
+            ->orderByDesc('created_at');
+
+        return response()->streamDownload(function () use ($query) {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Invoice #', 'Buyer Name', 'Buyer Email', 'Lot #', 'Sale Price', 'Total', 'Balance Due', 'Status', 'Due Date', 'Paid At', 'Created At']);
+
+            $query->chunk(500, function ($invoices) use ($handle) {
+                foreach ($invoices as $inv) {
+                    fputcsv($handle, [
+                        $inv->invoice_number,
+                        $inv->buyer?->name ?? '',
+                        $inv->buyer?->email ?? '',
+                        $inv->lot?->lot_number ?? '',
+                        $inv->sale_price,
+                        number_format((float) $inv->total_amount, 2),
+                        number_format((float) $inv->balance_due, 2),
+                        $inv->status->value,
+                        $inv->due_at?->toDateString() ?? '',
+                        $inv->paid_at?->toDateString() ?? '',
+                        $inv->created_at?->toDateString() ?? '',
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        }, 'invoices-' . now()->format('Y-m-d') . '.csv', [
+            'Content-Type' => 'text/csv',
+        ]);
     }
 }
