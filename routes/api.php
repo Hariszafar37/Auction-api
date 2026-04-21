@@ -5,8 +5,13 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
 use App\Http\Controllers\Api\V1\Admin\AdminFeeController;
 use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
+use App\Http\Controllers\Api\V1\Admin\AdminPurchaseController;
+use App\Http\Controllers\Api\V1\Admin\AdminTransportController;
 use App\Http\Controllers\Api\V1\Payment\InvoiceController;
 use App\Http\Controllers\Api\V1\Payment\PaymentController;
+use App\Http\Controllers\Api\V1\Purchase\GatePassController;
+use App\Http\Controllers\Api\V1\Purchase\PurchaseController;
+use App\Http\Controllers\Api\V1\Purchase\TransportController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
 use App\Http\Controllers\Api\V1\Admin\AdminGovController;
@@ -66,6 +71,9 @@ Route::prefix('v1')->group(function () {
     });
 
     // Signed verification URL — must not be nested inside auth. prefix (Laravel email verification requirement)
+    // Gate pass public verification — yard staff scan QR code without logging in
+    Route::get('/verify/gate-pass/{token}', [GatePassController::class, 'verify'])->name('gate-pass.verify');
+
     Route::get('/auth/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
         ->middleware('signed')
         ->name('verification.verify');
@@ -159,6 +167,14 @@ Route::prefix('v1')->group(function () {
 
         // My won lots
         Route::get('/my/won', [WonLotsController::class, 'index'])->name('my.won');
+
+        // My purchases (won lots — pickup, gate pass, documents, transport)
+        Route::prefix('my/purchases')->name('my.purchases.')->group(function () {
+            Route::get('/',                              [PurchaseController::class, 'index'])->name('index');
+            Route::get('/{lotId}',                       [PurchaseController::class, 'show'])->name('show');
+            Route::get('/{lotId}/gate-pass',             [GatePassController::class, 'download'])->name('gate-pass');
+            Route::post('/{lotId}/transport',            [TransportController::class, 'store'])->name('transport.store');
+        });
 
         // My invoices
         Route::prefix('my/invoices')->name('my.invoices.')->group(function () {
@@ -313,6 +329,21 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{user}/invite',    [AdminGovController::class, 'sendInvite'])->name('invite');
                 Route::post('/{user}/approve',   [AdminGovController::class, 'approve'])->name('approve');
                 Route::post('/{user}/reject',    [AdminGovController::class, 'reject'])->name('reject');
+            });
+
+            // Post-auction purchases & pickup management
+            Route::prefix('purchases')->name('purchases.')->group(function () {
+                Route::get('/',                              [AdminPurchaseController::class, 'index'])->name('index');
+                Route::get('/{lotId}',                       [AdminPurchaseController::class, 'show'])->name('show');
+                Route::patch('/{lotId}/status',              [AdminPurchaseController::class, 'updateStatus'])->name('status');
+                Route::patch('/{lotId}/documents',           [AdminPurchaseController::class, 'updateDocuments'])->name('documents');
+                Route::post('/{lotId}/notes',                [AdminPurchaseController::class, 'addNote'])->name('notes');
+            });
+
+            // Transport requests management
+            Route::prefix('transport-requests')->name('transport-requests.')->group(function () {
+                Route::get('/',          [AdminTransportController::class, 'index'])->name('index');
+                Route::patch('/{transportRequest}', [AdminTransportController::class, 'update'])->name('update');
             });
 
             // Fee configuration management

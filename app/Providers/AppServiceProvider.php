@@ -19,6 +19,7 @@ use App\Listeners\Auction\SendAuctionWonNotification;
 use App\Listeners\Auction\SendBidPlacedNotification;
 use App\Listeners\Auction\SendOutbidEmailNotification;
 use App\Listeners\Payment\CreateInvoiceForWonLot;
+use App\Listeners\Pickup\CreatePurchaseDetailForWonLot;
 use App\Models\PowerOfAttorney;
 use App\Models\UserDocument;
 use App\Policies\PowerOfAttorneyPolicy;
@@ -89,5 +90,6 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(BidPlaced::class, SendBidPlacedNotification::class);
         Event::listen(UserWonLot::class, SendAuctionWonNotification::class);
         Event::listen(UserWonLot::class, CreateInvoiceForWonLot::class);
+        Event::listen(UserWonLot::class, CreatePurchaseDetailForWonLot::class);
     }
 }

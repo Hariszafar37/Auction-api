@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Mail\PaymentReceived;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Services\Pickup\PurchaseService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -109,6 +110,12 @@ class WebhookController extends Controller
                 'payment_intent_id' => $paymentIntent->id,
             ]);
             return;
+        }
+
+        // Transition pickup status if invoice is now fully paid
+        $freshInvoice = $invoice->fresh();
+        if ($freshInvoice->isPaid()) {
+            app(PurchaseService::class)->handleInvoicePaid($freshInvoice);
         }
 
         // Queue receipt email — reload fresh invoice after all mutations

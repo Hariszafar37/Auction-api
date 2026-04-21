@@ -26,3 +26,7 @@ pest()->use(Tests\Helpers\CreatesAuctionData::class)
 // Shared invoice/payment factory helpers — scoped to payment tests.
 pest()->use(Tests\Helpers\CreatesInvoiceData::class)
     ->in('Feature/Payment');
+
+// Shared purchase/pickup factory helpers — scoped to purchase tests.
+pest()->use(Tests\Helpers\CreatesPurchaseData::class)
+    ->in('Feature/Purchase');
