@@ -134,6 +134,15 @@ class Invoice extends Model
         return $this->due_at && $this->due_at->isPast() && ! $this->isPaid();
     }
 
+    /**
+     * Computed accessor — always reflects the live arithmetic,
+     * not the stored balance_due which may lag a transaction.
+     */
+    public function getRemainingBalanceAttribute(): float
+    {
+        return max(0.0, (float) $this->total_amount - (float) $this->amount_paid);
+    }
+
     public function recalculateBalance(): void
     {
         $paid = $this->completedPayments()->sum('amount');

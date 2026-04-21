@@ -43,6 +43,29 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Stripe live-key guard ─────────────────────────────────────────────────
+        // Refuse to boot if a live Stripe key is detected outside production.
+        // This is a hard stop — not a warning — so no developer can accidentally
+        // run staging or local with a live key and charge real customers.
+        if (! app()->environment('production')) {
+            $stripeKey    = config('services.stripe.key');
+            $stripeSecret = config('services.stripe.secret');
+
+            if ($stripeKey && str_starts_with($stripeKey, 'pk_live_')) {
+                throw new \RuntimeException(
+                    'DANGER: Live Stripe publishable key detected in a non-production environment. ' .
+                    'Set STRIPE_KEY to a test key (pk_test_...) in your .env.'
+                );
+            }
+
+            if ($stripeSecret && str_starts_with($stripeSecret, 'sk_live_')) {
+                throw new \RuntimeException(
+                    'DANGER: Live Stripe secret key detected in a non-production environment. ' .
+                    'Set STRIPE_SECRET to a test key (sk_test_...) in your .env.'
+                );
+            }
+        }
+
         // ── Authorization policies ────────────────────────────────────────────────
         // Registered here (not in a dedicated AuthServiceProvider) to match the
         // existing project layout, which consolidates bindings in AppServiceProvider.

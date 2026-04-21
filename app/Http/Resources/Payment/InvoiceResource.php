@@ -48,9 +48,10 @@ class InvoiceResource extends JsonResource
             'storage_fee_amount'  => (float) $this->storage_fee_amount,
 
             // Totals
-            'total_amount'  => (float) $this->total_amount,
-            'amount_paid'   => (float) $this->amount_paid,
-            'balance_due'   => (float) $this->balance_due,
+            'total_amount'       => (float) $this->total_amount,
+            'amount_paid'        => (float) $this->amount_paid,
+            'balance_due'        => (float) $this->balance_due,
+            'remaining_balance'  => (float) $this->remaining_balance,
 
             // Dates
             'due_at'     => $this->due_at?->toIso8601String(),
