@@ -9,12 +9,12 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 
 class InvoiceController extends Controller
 {
     /**
      * GET /my/invoices
-     * Returns the authenticated buyer's invoice list.
      */
     public function index(Request $request): JsonResponse
     {
@@ -50,7 +50,9 @@ class InvoiceController extends Controller
 
     /**
      * GET /my/invoices/{invoice}/pdf
-     * Streams a PDF copy of the invoice.
+     *
+     * FIX 2: PDF always generated on-demand. Result cached 5 minutes for performance.
+     * Cache is invalidated by AccrueStorageFees whenever storage fees change.
      */
     public function pdf(Request $request, Invoice $invoice): Response
     {
@@ -60,8 +62,13 @@ class InvoiceController extends Controller
 
         $invoice->load(['lot', 'auction', 'vehicle', 'buyer', 'payments']);
 
-        $pdf = Pdf::loadView('invoices.pdf', ['invoice' => $invoice]);
+        $pdfContent = Cache::remember('invoice_pdf_' . $invoice->id, 300, function () use ($invoice) {
+            return Pdf::loadView('invoices.pdf', ['invoice' => $invoice])->output();
+        });
 
-        return $pdf->download("invoice-{$invoice->invoice_number}.pdf");
+        return response($pdfContent, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => "attachment; filename=\"invoice-{$invoice->invoice_number}.pdf\"",
+        ]);
     }
 }

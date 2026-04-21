@@ -19,12 +19,16 @@ class InvoicePayment extends Model
         'notes',
         'processed_at',
         'processed_by',
+        'approved_by',
+        'approved_at',
+        'approval_note',
     ];
 
     protected $casts = [
         'amount'       => 'decimal:2',
         'method'       => PaymentMethod::class,
         'processed_at' => 'datetime',
+        'approved_at'  => 'datetime',
     ];
 
     protected $hidden = ['stripe_client_secret'];
@@ -42,5 +46,10 @@ class InvoicePayment extends Model
     public function processedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'processed_by');
+    }
+
+    public function approvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
     }
 }

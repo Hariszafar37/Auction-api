@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Models\Invoice;
 use App\Services\Payment\FeeCalculationService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class AccrueStorageFees extends Command
 {
@@ -57,6 +58,9 @@ class AccrueStorageFees extends Command
                 'balance_due'             => $newBalance,
                 'storage_last_accrued_at' => now(),
             ]);
+
+            // FIX 2: invalidate cached PDF so next download reflects updated storage total
+            Cache::forget('invoice_pdf_' . $invoice->id);
 
             $count++;
         }

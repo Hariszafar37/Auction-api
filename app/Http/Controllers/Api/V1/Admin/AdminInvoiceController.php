@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Stripe\StripeClient;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse; // used by response()->stream()
 
 class AdminInvoiceController extends Controller
 {
@@ -101,11 +101,17 @@ class AdminInvoiceController extends Controller
             return $this->error('Only payments pending verification can be approved.', 422);
         }
 
-        DB::transaction(function () use ($payment, $invoice) {
+        // FIX 3: capture audit trail — who approved, when, and why
+        $note = request()->input('note');
+
+        DB::transaction(function () use ($payment, $invoice, $note) {
             $payment->update([
-                'status'       => 'verified',
-                'processed_at' => now(),
-                'processed_by' => request()->user()->id,
+                'status'        => 'verified',
+                'processed_at'  => now(),
+                'processed_by'  => request()->user()->id,
+                'approved_by'   => request()->user()->id,
+                'approved_at'   => now(),
+                'approval_note' => $note,
             ]);
             $invoice->recalculateBalance();
         });
@@ -142,44 +148,50 @@ class AdminInvoiceController extends Controller
         );
     }
 
-    // ─── FIX 10: CSV export ───────────────────────────────────────────────────────
-
     /**
      * GET /admin/invoices/export
+     *
+     * FIX 5: memory-safe streaming CSV — flat memory regardless of row count.
+     * Uses response()->stream() with chunk(500) so the full result set is never
+     * loaded into memory at once.
      */
     public function export(Request $request): StreamedResponse
     {
         $status = $request->query('status');
 
-        $query = Invoice::with(['buyer', 'lot'])
-            ->when($status, fn ($q) => $q->where('status', $status))
-            ->orderByDesc('created_at');
-
-        return response()->streamDownload(function () use ($query) {
+        return response()->stream(function () use ($status) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Invoice #', 'Buyer Name', 'Buyer Email', 'Lot #', 'Sale Price', 'Total', 'Balance Due', 'Status', 'Due Date', 'Paid At', 'Created At']);
+            fputcsv($handle, [
+                'Invoice #', 'Buyer Name', 'Buyer Email', 'Lot #',
+                'Sale Price', 'Total', 'Balance Due', 'Status',
+                'Due Date', 'Paid At', 'Created At',
+            ]);
 
-            $query->chunk(500, function ($invoices) use ($handle) {
-                foreach ($invoices as $inv) {
-                    fputcsv($handle, [
-                        $inv->invoice_number,
-                        $inv->buyer?->name ?? '',
-                        $inv->buyer?->email ?? '',
-                        $inv->lot?->lot_number ?? '',
-                        $inv->sale_price,
-                        number_format((float) $inv->total_amount, 2),
-                        number_format((float) $inv->balance_due, 2),
-                        $inv->status->value,
-                        $inv->due_at?->toDateString() ?? '',
-                        $inv->paid_at?->toDateString() ?? '',
-                        $inv->created_at?->toDateString() ?? '',
-                    ]);
-                }
-            });
+            Invoice::with(['buyer', 'lot'])
+                ->when($status, fn ($q) => $q->where('status', $status))
+                ->orderBy('created_at', 'desc')
+                ->chunk(500, function ($invoices) use ($handle) {
+                    foreach ($invoices as $inv) {
+                        fputcsv($handle, [
+                            $inv->invoice_number,
+                            $inv->buyer?->name ?? '',
+                            $inv->buyer?->email ?? '',
+                            $inv->lot?->lot_number ?? '',
+                            $inv->sale_price,
+                            number_format((float) $inv->total_amount, 2),
+                            number_format((float) $inv->balance_due, 2),
+                            $inv->status->value,
+                            $inv->due_at?->toDateString() ?? '',
+                            $inv->paid_at?->toDateString() ?? '',
+                            $inv->created_at?->toDateString() ?? '',
+                        ]);
+                    }
+                });
 
             fclose($handle);
-        }, 'invoices-' . now()->format('Y-m-d') . '.csv', [
-            'Content-Type' => 'text/csv',
+        }, 200, [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="invoices-' . now()->format('Y-m-d') . '.csv"',
         ]);
     }
 }
