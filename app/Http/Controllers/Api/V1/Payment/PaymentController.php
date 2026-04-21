@@ -35,6 +35,10 @@ class PaymentController extends Controller
             return $this->error('This invoice is not open for payment.', 422, 'invoice_not_open');
         }
 
+        if (! config('services.stripe.secret')) {
+            return $this->error('Card payments are temporarily unavailable.', 503, 'stripe_not_configured');
+        }
+
         // Return existing pending Stripe payment if present (idempotency at DB level)
         $existing = $invoice->payments()
             ->where('method', 'stripe_card')

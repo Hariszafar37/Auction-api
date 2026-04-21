@@ -22,3 +22,7 @@ pest()->use(Tests\Helpers\CreatesAuctionData::class)
 // Shared auction factory helpers — also available in compliance tests.
 pest()->use(Tests\Helpers\CreatesAuctionData::class)
     ->in('Feature/Compliance');
+
+// Shared invoice/payment factory helpers — scoped to payment tests.
+pest()->use(Tests\Helpers\CreatesInvoiceData::class)
+    ->in('Feature/Payment');
