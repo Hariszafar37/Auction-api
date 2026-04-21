@@ -26,6 +26,9 @@ class DatabaseSeeder extends Seeder
 
             // 6. Lots (depends on vehicles + auctions)
             AuctionLotSeeder::class,
+
+            // 7. Fee configurations (no dependencies)
+            FeeConfigurationSeeder::class,
         ]);
     }
 }
