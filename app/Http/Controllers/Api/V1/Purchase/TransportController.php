@@ -18,12 +18,24 @@ class TransportController extends Controller
      */
     public function store(Request $request, int $lotId): JsonResponse
     {
-        $purchase = PurchaseDetail::forBuyer($request->user()->id)
-            ->where('lot_id', $lotId)
-            ->first();
+        $purchase = PurchaseDetail::where('lot_id', $lotId)->first();
 
         if (! $purchase) {
             return $this->error('Purchase not found.', 404);
+        }
+
+        $this->authorize('requestTransport', $purchase);
+
+        // FIX 3: guard against duplicate active requests
+        $existing = TransportRequest::where('lot_id', $lotId)
+            ->whereNotIn('status', [TransportRequestStatus::Cancelled->value])
+            ->exists();
+
+        if ($existing) {
+            return $this->error(
+                'A transport request already exists for this vehicle. Cancel the existing request before submitting a new one.',
+                422
+            );
         }
 
         $validated = $request->validate([

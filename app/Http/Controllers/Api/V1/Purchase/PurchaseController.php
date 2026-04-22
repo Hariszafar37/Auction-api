@@ -42,8 +42,7 @@ class PurchaseController extends Controller
      */
     public function show(Request $request, int $lotId): JsonResponse
     {
-        $purchase = PurchaseDetail::forBuyer($request->user()->id)
-            ->where('lot_id', $lotId)
+        $purchase = PurchaseDetail::where('lot_id', $lotId)
             ->with([
                 'lot.vehicle',
                 'lot.auction',
@@ -55,6 +54,8 @@ class PurchaseController extends Controller
         if (! $purchase) {
             return $this->error('Purchase not found.', 404);
         }
+
+        $this->authorize('view', $purchase);
 
         return $this->success(new PurchaseDetailResource($purchase));
     }

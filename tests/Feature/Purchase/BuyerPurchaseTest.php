@@ -52,14 +52,14 @@ test('buyer can view their purchase detail', function () {
          ->assertJsonStructure(['data' => ['lot', 'vehicle', 'auction', 'invoice', 'pickup_status']]);
 });
 
-test('buyer gets 404 when accessing another buyers purchase', function () {
+test('buyer gets 403 when accessing another buyers purchase', function () {
     $buyer1   = User::factory()->create(['status' => 'active']);
     $buyer2   = User::factory()->create(['status' => 'active']);
     $purchase = $this->makePurchase($buyer1);
 
     $this->actingAs($buyer2, 'sanctum')
          ->getJson("/api/v1/my/purchases/{$purchase->lot_id}")
-         ->assertNotFound();
+         ->assertForbidden();
 });
 
 // ─── Purchase response contains invoice summary ───────────────────────────────

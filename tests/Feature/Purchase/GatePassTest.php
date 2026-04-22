@@ -54,8 +54,8 @@ test('buyer cannot download gate pass for another buyers purchase', function () 
     $purchase = $this->makePurchase($buyer1);
 
     $this->actingAs($buyer2, 'sanctum')
-         ->get("/api/v1/my/purchases/{$purchase->lot_id}/gate-pass")
-         ->assertNotFound();
+         ->getJson("/api/v1/my/purchases/{$purchase->lot_id}/gate-pass")
+         ->assertForbidden();
 });
 
 // ─── Gate pass token — lazy generation ───────────────────────────────────────
@@ -121,4 +121,79 @@ test('verify endpoint returns valid false for unpaid invoice', function () {
 test('verify endpoint does not require authentication', function () {
     $this->getJson('/api/v1/verify/gate-pass/any-token')
          ->assertOk(); // no 401
+});
+
+// ─── FIX 9 — Additional gate pass tests ──────────────────────────────────────
+
+test('gate pass download blocked when invoice unpaid', function () {
+    $buyer    = User::factory()->create(['status' => 'active']);
+    $purchase = $this->makePurchase($buyer, ['status' => InvoiceStatus::Pending]);
+
+    $this->actingAs($buyer, 'sanctum')
+         ->getJson("/api/v1/my/purchases/{$purchase->lot_id}/gate-pass")
+         ->assertForbidden();
+});
+
+test('gate pass download blocked when invoice partial', function () {
+    $buyer    = User::factory()->create(['status' => 'active']);
+    $purchase = $this->makePurchase($buyer, [
+        'status'      => \App\Enums\InvoiceStatus::Partial,
+        'amount_paid' => 2000,
+        'balance_due' => 3800,
+    ]);
+
+    $this->actingAs($buyer, 'sanctum')
+         ->getJson("/api/v1/my/purchases/{$purchase->lot_id}/gate-pass")
+         ->assertForbidden();
+});
+
+test('verify endpoint returns invalid for revoked gate pass', function () {
+    $buyer    = User::factory()->create(['status' => 'active']);
+    $purchase = $this->makePurchase($buyer, [
+        'status'      => InvoiceStatus::Paid,
+        'amount_paid' => 5800,
+        'balance_due' => 0,
+        'paid_at'     => now(),
+    ]);
+    $token = Str::uuid()->toString();
+    $purchase->update([
+        'gate_pass_token'      => $token,
+        'gate_pass_revoked_at' => now(),
+        'revocation_reason'    => 'Suspected fraud',
+    ]);
+
+    $this->getJson("/api/v1/verify/gate-pass/{$token}")
+         ->assertOk()
+         ->assertJsonPath('valid', false)
+         ->assertJsonPath('reason', 'revoked');
+});
+
+test('verify endpoint returns invalid for tampered token', function () {
+    $this->getJson('/api/v1/verify/gate-pass/tampered-token-xyz')
+         ->assertOk()
+         ->assertJsonPath('valid', false);
+});
+
+test('gate pass token is unique per lot', function () {
+    $buyer1   = User::factory()->create(['status' => 'active']);
+    $buyer2   = User::factory()->create(['status' => 'active']);
+    $purchase1 = $this->makePurchase($buyer1, [
+        'status' => InvoiceStatus::Paid, 'amount_paid' => 5800, 'balance_due' => 0, 'paid_at' => now(),
+    ], ['pickup_status' => \App\Enums\PickupStatus::ReadyForPickup]);
+    $purchase2 = $this->makePurchase($buyer2, [
+        'status' => InvoiceStatus::Paid, 'amount_paid' => 5800, 'balance_due' => 0, 'paid_at' => now(),
+    ], ['pickup_status' => \App\Enums\PickupStatus::ReadyForPickup]);
+
+    $purchase1->load('lot.auction', 'lot.vehicle', 'buyer');
+    $purchase2->load('lot.auction', 'lot.vehicle', 'buyer');
+
+    $this->actingAs($buyer1, 'sanctum')->get("/api/v1/my/purchases/{$purchase1->lot_id}/gate-pass")->assertOk();
+    $this->actingAs($buyer2, 'sanctum')->get("/api/v1/my/purchases/{$purchase2->lot_id}/gate-pass")->assertOk();
+
+    $token1 = $purchase1->fresh()->gate_pass_token;
+    $token2 = $purchase2->fresh()->gate_pass_token;
+
+    expect($token1)->not->toBeNull()
+        ->and($token2)->not->toBeNull()
+        ->and($token1)->not->toBe($token2);
 });

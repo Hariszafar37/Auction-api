@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Enums\InvoiceStatus;
 use App\Enums\PickupStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Purchase\PurchaseDetailResource;
+use App\Models\AuctionLot;
 use App\Models\PurchaseDetail;
 use App\Services\Pickup\PurchaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class AdminPurchaseController extends Controller
 {
@@ -153,5 +156,98 @@ class AdminPurchaseController extends Controller
             new PurchaseDetailResource($purchase->load(['lot.vehicle', 'lot.auction', 'invoice', 'buyer'])),
             'Notes updated.'
         );
+    }
+
+    /**
+     * POST /admin/purchases/{lot_id}/gate-pass/revoke
+     * Revoke an issued gate pass. Optionally rolls status back to ready_for_pickup.
+     */
+    public function revokeGatePass(Request $request, int $lotId): JsonResponse
+    {
+        $purchase = PurchaseDetail::where('lot_id', $lotId)->first();
+
+        if (! $purchase) {
+            return $this->error('Purchase not found.', 404);
+        }
+
+        if (! $purchase->gate_pass_generated_at) {
+            return $this->error('No gate pass has been generated for this lot.', 422);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $updates = [
+            'gate_pass_revoked_at' => now(),
+            'revocation_reason'    => $validated['reason'] ?? null,
+        ];
+
+        if ($purchase->pickup_status === PickupStatus::GatePassIssued) {
+            $updates['pickup_status'] = PickupStatus::ReadyForPickup;
+        }
+
+        $purchase->update($updates);
+
+        Cache::forget("gate_pass_lot_{$lotId}");
+
+        return $this->success(
+            new PurchaseDetailResource($purchase->fresh()->load(['lot.vehicle', 'lot.auction', 'invoice', 'buyer'])),
+            'Gate pass revoked.'
+        );
+    }
+
+    /**
+     * POST /admin/purchases/bulk-ready
+     * Mark all awaiting_payment lots in an auction as ready_for_pickup, skipping unpaid invoices.
+     */
+    public function bulkReady(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'auction_event_id' => 'required|integer|exists:auctions,id',
+        ]);
+
+        $skipped = [];
+        $updated = 0;
+
+        AuctionLot::where('auction_id', $validated['auction_event_id'])
+            ->with(['purchaseDetail', 'invoice'])
+            ->get()
+            ->each(function ($lot) use (&$skipped, &$updated) {
+                if (! $lot->purchaseDetail) {
+                    return;
+                }
+
+                if ($lot->invoice?->status !== InvoiceStatus::Paid) {
+                    if ($lot->lot_number) {
+                        $skipped[] = (string) $lot->lot_number;
+                    }
+                    return;
+                }
+
+                if ($lot->purchaseDetail->pickup_status === PickupStatus::AwaitingPayment) {
+                    try {
+                        $this->purchaseService->transitionPickupStatus(
+                            $lot->purchaseDetail,
+                            PickupStatus::ReadyForPickup
+                        );
+                        $updated++;
+                    } catch (\InvalidArgumentException) {
+                        // Already past this status — skip silently
+                    }
+                }
+            });
+
+        $message = "{$updated} lots marked ready for pickup.";
+        if (count($skipped)) {
+            $message .= ' ' . count($skipped) . ' skipped — payment not yet complete.';
+        }
+
+        return $this->success([
+            'updated'       => $updated,
+            'skipped_count' => count($skipped),
+            'skipped_lots'  => $skipped,
+            'message'       => $message,
+        ]);
     }
 }

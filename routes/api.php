@@ -334,10 +334,12 @@ Route::prefix('v1')->group(function () {
             // Post-auction purchases & pickup management
             Route::prefix('purchases')->name('purchases.')->group(function () {
                 Route::get('/',                              [AdminPurchaseController::class, 'index'])->name('index');
+                Route::post('/bulk-ready',                   [AdminPurchaseController::class, 'bulkReady'])->name('bulk-ready');
                 Route::get('/{lotId}',                       [AdminPurchaseController::class, 'show'])->name('show');
                 Route::patch('/{lotId}/status',              [AdminPurchaseController::class, 'updateStatus'])->name('status');
                 Route::patch('/{lotId}/documents',           [AdminPurchaseController::class, 'updateDocuments'])->name('documents');
                 Route::post('/{lotId}/notes',                [AdminPurchaseController::class, 'addNote'])->name('notes');
+                Route::post('/{lotId}/gate-pass/revoke',     [AdminPurchaseController::class, 'revokeGatePass'])->name('gate-pass.revoke');
             });
 
             // Transport requests management

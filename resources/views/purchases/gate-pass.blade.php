@@ -50,12 +50,13 @@
 <body>
 
 @php
-    $lot     = $purchase->lot;
-    $vehicle = $lot?->vehicle;
-    $auction = $lot?->auction;
-    $buyer   = $purchase->buyer;
-    $invoice = $purchase->invoice;
+    $lot       = $purchase->lot;
+    $vehicle   = $lot?->vehicle;
+    $auction   = $lot?->auction;
+    $buyer     = $purchase->buyer;
+    $invoice   = $purchase->invoice;
     $verifyUrl = url('/api/v1/verify/gate-pass/' . $purchase->gate_pass_token);
+    $qrSvg = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')->size(120)->generate($verifyUrl);
 @endphp
 
 <div class="header">
@@ -122,10 +123,16 @@
 </div>
 
 <div class="verify-box">
-    <p>VERIFICATION — Yard staff: scan the QR code or visit the URL below to verify this gate pass in real time.</p>
-    {{-- QR code generation requires bacon/bacon-qr-code package. Install with: composer require bacon/bacon-qr-code --}}
-    <p class="verify-url">{{ $verifyUrl }}</p>
-    <p style="margin-top: 6px; font-size:9px; color:#94a3b8;">Gate Pass Token: {{ $purchase->gate_pass_token }}</p>
+    <div style="display:flex; gap:16px; align-items:flex-start;">
+        <div style="width:100px;height:100px;flex-shrink:0;">
+            {!! $qrSvg !!}
+        </div>
+        <div>
+            <p>VERIFICATION — Yard staff: scan the QR code or visit the URL below to verify this gate pass in real time.</p>
+            <p class="verify-url" style="margin-top:6px;">{{ $verifyUrl }}</p>
+            <p style="margin-top: 6px; font-size:9px; color:#94a3b8;">Gate Pass Token: {{ $purchase->gate_pass_token }}</p>
+        </div>
+    </div>
 </div>
 
 <div class="footer">

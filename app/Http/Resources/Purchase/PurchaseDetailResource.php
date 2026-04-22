@@ -66,6 +66,8 @@ class PurchaseDetailResource extends JsonResource
                 $this->gate_pass_token,
             ),
             'gate_pass_generated_at' => $this->gate_pass_generated_at?->toIso8601String(),
+            'gate_pass_revoked_at'   => $this->gate_pass_revoked_at?->toIso8601String(),
+            'revocation_reason'      => $this->revocation_reason,
 
             // Document tracker milestones
             'title_received_at' => $this->title_received_at?->toIso8601String(),

@@ -167,3 +167,27 @@ test('mark overdue invoices does not affect future due invoices', function () {
     expect($invoice->fresh()->status)->toBe(InvoiceStatus::Pending);
     Mail::assertNothingQueued();
 });
+
+// ─── FIX 2 / FIX 9 — Storage fee stops after pickup ─────────────────────────
+
+test('storage fee does not accrue after vehicle picked up', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer, [
+        'status'      => \App\Enums\InvoiceStatus::Pending,
+        'balance_due' => 100,
+    ]);
+
+    // Mark the lot as picked up
+    \App\Models\PurchaseDetail::create([
+        'lot_id'        => $invoice->lot_id,
+        'buyer_id'      => $buyer->id,
+        'pickup_status' => \App\Enums\PickupStatus::PickedUp,
+        'picked_up_at'  => now(),
+    ]);
+
+    $initialDays = $invoice->fresh()->storage_days;
+
+    $this->artisan('invoices:accrue-storage')->assertSuccessful();
+
+    expect($invoice->fresh()->storage_days)->toBe($initialDays);
+});

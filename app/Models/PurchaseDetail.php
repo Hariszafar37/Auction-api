@@ -15,6 +15,8 @@ class PurchaseDetail extends Model
         'buyer_id',
         'gate_pass_token',
         'gate_pass_generated_at',
+        'gate_pass_revoked_at',
+        'revocation_reason',
         'pickup_status',
         'pickup_notes',
         'picked_up_at',
@@ -26,6 +28,7 @@ class PurchaseDetail extends Model
     protected $casts = [
         'pickup_status'          => PickupStatus::class,
         'gate_pass_generated_at' => 'datetime',
+        'gate_pass_revoked_at'   => 'datetime',
         'picked_up_at'           => 'datetime',
         'title_received_at'      => 'datetime',
         'title_verified_at'      => 'datetime',

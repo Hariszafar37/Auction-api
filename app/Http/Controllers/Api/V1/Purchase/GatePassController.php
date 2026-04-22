@@ -23,8 +23,7 @@ class GatePassController extends Controller
      */
     public function download(Request $request, int $lotId): Response|JsonResponse
     {
-        $purchase = PurchaseDetail::forBuyer($request->user()->id)
-            ->where('lot_id', $lotId)
+        $purchase = PurchaseDetail::where('lot_id', $lotId)
             ->with(['lot.vehicle', 'lot.auction', 'buyer', 'invoice'])
             ->first();
 
@@ -32,9 +31,8 @@ class GatePassController extends Controller
             return $this->error('Purchase not found.', 404);
         }
 
-        if (! $purchase->invoice || ! $purchase->invoice->isPaid()) {
-            return $this->error('Gate pass is only available for fully paid invoices.', 403);
-        }
+        $this->authorize('downloadGatePass', $purchase);
+
 
         // Ensure a stable token exists (lazy generation).
         $this->purchaseService->ensureGatePassToken($purchase);
@@ -62,6 +60,14 @@ class GatePassController extends Controller
 
         if (! $purchase || ! $purchase->invoice?->isPaid()) {
             return response()->json(['valid' => false], 200);
+        }
+
+        if ($purchase->gate_pass_revoked_at !== null) {
+            return response()->json([
+                'valid'   => false,
+                'reason'  => 'revoked',
+                'message' => 'This gate pass has been revoked. Please contact the auction house.',
+            ]);
         }
 
         $vehicle = $purchase->lot?->vehicle;

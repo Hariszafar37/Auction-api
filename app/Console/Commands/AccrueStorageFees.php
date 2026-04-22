@@ -31,6 +31,9 @@ class AccrueStorageFees extends Command
                 $q->whereNull('storage_last_accrued_at')
                   ->orWhereDate('storage_last_accrued_at', '<', $today);
             })
+            ->whereDoesntHave('lot.purchaseDetail', function ($q) {
+                $q->whereNotNull('picked_up_at');
+            })
             ->with(['lot.auction'])
             ->get();
 
