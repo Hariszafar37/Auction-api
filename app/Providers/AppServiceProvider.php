@@ -19,9 +19,12 @@ use App\Listeners\Auction\SendAuctionWonNotification;
 use App\Listeners\Auction\SendBidPlacedNotification;
 use App\Listeners\Auction\SendOutbidEmailNotification;
 use App\Listeners\Payment\CreateInvoiceForWonLot;
+use App\Listeners\Pickup\CreatePurchaseDetailForWonLot;
 use App\Models\PowerOfAttorney;
+use App\Models\PurchaseDetail;
 use App\Models\UserDocument;
 use App\Policies\PowerOfAttorneyPolicy;
+use App\Policies\PurchasePolicy;
 use App\Policies\UserDocumentPolicy;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Event;
@@ -71,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
         // existing project layout, which consolidates bindings in AppServiceProvider.
         Gate::policy(UserDocument::class, UserDocumentPolicy::class);
         Gate::policy(PowerOfAttorney::class, PowerOfAttorneyPolicy::class);
+        Gate::policy(PurchaseDetail::class, PurchasePolicy::class);
 
         ResetPassword::createUrlUsing(function (object $notifiable, string $token) {
             return config('app.frontend_url') . '/reset-password?token=' . $token
@@ -89,5 +93,6 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(BidPlaced::class, SendBidPlacedNotification::class);
         Event::listen(UserWonLot::class, SendAuctionWonNotification::class);
         Event::listen(UserWonLot::class, CreateInvoiceForWonLot::class);
+        Event::listen(UserWonLot::class, CreatePurchaseDetailForWonLot::class);
     }
 }

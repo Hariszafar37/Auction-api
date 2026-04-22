@@ -15,6 +15,7 @@
         "laravel/scout": "^10.24",
         "laravel/tinker": "^2.9",
         "phpoffice/phpspreadsheet": "^5.5",
+        "simplesoftwareio/simple-qrcode": "^4.2",
         "spatie/laravel-medialibrary": "^11.21",
         "spatie/laravel-permission": "^6.0",
         "spatie/laravel-query-builder": "^6.4",
