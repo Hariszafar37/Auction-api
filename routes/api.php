@@ -244,6 +244,7 @@ Route::prefix('v1')->group(function () {
             // Users
             Route::prefix('users')->name('users.')->group(function () {
                 Route::get('/',                [AdminUserController::class, 'index'])->name('index')->middleware('permission:users.view');
+                Route::post('/',               [AdminUserController::class, 'store'])->name('store')->middleware('permission:users.manage');
                 Route::get('/{user}',          [AdminUserController::class, 'show'])->name('show')->middleware('permission:users.view');
                 Route::patch('/{user}/status', [AdminUserController::class, 'updateStatus'])->name('status')->middleware('permission:users.manage');
                 Route::patch('/{user}/role',   [AdminUserController::class, 'updateRole'])->name('role')->middleware('permission:users.manage');
