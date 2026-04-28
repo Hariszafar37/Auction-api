@@ -55,6 +55,7 @@ class RolePermissionSeeder extends Seeder
         $buyer  = Role::firstOrCreate(['name' => 'buyer',  'guard_name' => 'sanctum']);
         $dealer = Role::firstOrCreate(['name' => 'dealer', 'guard_name' => 'sanctum']);
         $seller = Role::firstOrCreate(['name' => 'seller', 'guard_name' => 'sanctum']);
+        $staff  = Role::firstOrCreate(['name' => 'staff',  'guard_name' => 'sanctum']);
         $admin  = Role::firstOrCreate(['name' => 'admin',  'guard_name' => 'sanctum']);
 
         $buyer->syncPermissions([
@@ -85,6 +86,19 @@ class RolePermissionSeeder extends Seeder
             'inventory.create',
             'inventory.manage',
             'payments.view',
+        ]);
+
+        $staff->syncPermissions([
+            'auctions.view',
+            'auctions.manage',
+            'inventory.view',
+            'inventory.manage',
+            'users.view',
+            'dealers.view',
+            'sellers.view',
+            'payments.view',
+            'payments.manage',
+            'reports.view',
         ]);
 
         $admin->syncPermissions($permissions);

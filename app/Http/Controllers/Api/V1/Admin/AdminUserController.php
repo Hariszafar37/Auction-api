@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Events\Account\AccountApproved;
 use App\Events\Account\AccountRejected;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\CreateAdminUserRequest;
 use App\Http\Requests\Admin\RejectBusinessRequest;
 use App\Http\Requests\Admin\RejectDealerRequest;
 use App\Http\Requests\Admin\RejectSellerRequest;
@@ -14,6 +15,7 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Spatie\QueryBuilder\AllowedFilter;
 use Spatie\QueryBuilder\QueryBuilder;
 
@@ -44,6 +46,36 @@ class AdminUserController extends Controller
                 'per_page'     => $users->perPage(),
                 'total'        => $users->total(),
             ]
+        );
+    }
+
+    /**
+     * POST /api/v1/admin/users
+     *
+     * Create a new admin or staff user directly (no activation flow required).
+     */
+    public function store(CreateAdminUserRequest $request): JsonResponse
+    {
+        $user = User::create([
+            'name'                    => $request->name,
+            'first_name'              => $request->name,
+            'last_name'               => '',
+            'email'                   => $request->email,
+            'password'                => Hash::make($request->password),
+            'account_type'            => 'individual',
+            'status'                  => 'active',
+            'email_verified_at'       => now(),
+            'agreed_terms_at'         => now(),
+            'password_set_at'         => now(),
+            'activation_completed_at' => now(),
+        ]);
+
+        $user->syncRoles([$request->role]);
+
+        return $this->success(
+            new UserResource($user->fresh()),
+            'User created successfully.',
+            201
         );
     }
 
