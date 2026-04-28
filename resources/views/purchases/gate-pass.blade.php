@@ -60,7 +60,7 @@
 @endphp
 
 <div class="header">
-    <h1>AUTO AUCTION</h1>
+    <h1>Colonial Auto Auction</h1>
     <p>GATE PASS — VEHICLE RELEASE DOCUMENT</p>
 </div>
 
@@ -136,7 +136,7 @@
 </div>
 
 <div class="footer">
-    This gate pass authorizes the release of the above vehicle to the named buyer only. Valid only when payment is confirmed in our system. &copy; {{ now()->year }} Auto Auction Platform.
+    This gate pass authorizes the release of the above vehicle to the named buyer only. Valid only when payment is confirmed in our system. &copy; {{ now()->year }} Colonial Auto Auction.
 </div>
 
 </body>

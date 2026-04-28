@@ -84,7 +84,7 @@
 
     <div class="footer">
         <p>
-            This email was sent by <strong>Car Auction Platform</strong>.<br>
+            This email was sent by <strong>Colonial Auto Auction</strong>.<br>
             If you have questions, please contact us.
         </p>
     </div>

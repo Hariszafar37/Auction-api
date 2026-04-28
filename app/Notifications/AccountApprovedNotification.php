@@ -47,7 +47,7 @@ class AccountApprovedNotification extends Notification implements ShouldQueue
             ],
             'seller' => [
                 'Your Seller Application Has Been Approved',
-                'You are now approved to sell on our platform.',
+                'You are now approved to sell on Colonial Auto Auction.',
                 'Great news! Your individual seller application has been approved. You can now list vehicles for auction.',
                 'Add a Vehicle',
                 "{$frontendUrl}/vehicles/add",
@@ -55,7 +55,7 @@ class AccountApprovedNotification extends Notification implements ShouldQueue
             'government' => [
                 'Your Government Account Has Been Approved',
                 'Your government account is now active.',
-                'Your government/organization account has been reviewed and approved. You now have full access to the auction platform.',
+                'Your government/organization account has been reviewed and approved. You now have full access to Colonial Auto Auction.',
                 'Go to Dashboard',
                 "{$frontendUrl}/dashboard",
             ],
@@ -84,7 +84,7 @@ class AccountApprovedNotification extends Notification implements ShouldQueue
         [$title, $message, $actionUrl] = match ($this->context) {
             'dealer'     => ['Dealer account approved', 'Your dealer account is now active. You can submit vehicles to auction.', "{$frontendUrl}/dashboard"],
             'business'   => ['Business account approved', 'Your business account is now active.', "{$frontendUrl}/dashboard"],
-            'seller'     => ['Seller application approved', 'You are now approved to sell on the platform.', "{$frontendUrl}/vehicles/add"],
+            'seller'     => ['Seller application approved', 'You are now approved to sell on Colonial Auto Auction.', "{$frontendUrl}/vehicles/add"],
             'government' => ['Government account approved', 'Your government account is now active.', "{$frontendUrl}/dashboard"],
             default      => ['Account approved', 'Your account has been approved.', "{$frontendUrl}/dashboard"],
         };

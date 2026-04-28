@@ -110,7 +110,7 @@
       </p>
     </div>
     <div class="footer">
-      &copy; {{ date('Y') }} Car Auction Platform. All rights reserved.
+      &copy; {{ date('Y') }} Colonial Auto Auction. All rights reserved.
     </div>
   </div>
 </body>
