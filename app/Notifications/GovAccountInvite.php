@@ -28,9 +28,9 @@ class GovAccountInvite extends Notification
         $inviteUrl   = "{$frontendUrl}/accept-invite?token={$this->inviteToken}";
 
         return (new MailMessage)
-            ->subject('You have been invited to join the Auction Platform')
+            ->subject('You have been invited to join Colonial Auto Auction')
             ->greeting('Hello!')
-            ->line('An administrator has created a government/organization account for you on our auction platform.')
+            ->line('An administrator has created a government/organization account for you on Colonial Auto Auction.')
             ->line('Click the button below to accept your invitation and set up your password.')
             ->action('Accept Invitation', $inviteUrl)
             ->line('If you were not expecting this invitation, you may safely ignore this email.');

@@ -37,7 +37,7 @@
       <div class="detail-row"><span class="label">Stripe PI</span><span class="value">{{ $invoice->stripe_deposit_intent_id }}</span></div>
     </div>
     <div class="footer">
-      Car Auction Platform — Admin Notification &copy; {{ date('Y') }}
+      Colonial Auto Auction — Admin Notification &copy; {{ date('Y') }}
     </div>
   </div>
 </body>

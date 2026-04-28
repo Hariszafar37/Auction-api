@@ -30,7 +30,7 @@
 <body>
   <div class="wrapper">
     <div class="header">
-      <h1>Car Auction Platform</h1>
+      <h1>Colonial Auto Auction</h1>
       <p>Payment Confirmation</p>
     </div>
     <div class="body">
@@ -82,7 +82,7 @@
       </p>
     </div>
     <div class="footer">
-      &copy; {{ date('Y') }} Car Auction Platform. All rights reserved.
+      &copy; {{ date('Y') }} Colonial Auto Auction. All rights reserved.
     </div>
   </div>
 </body>

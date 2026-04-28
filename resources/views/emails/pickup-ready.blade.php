@@ -51,7 +51,7 @@
         <a href="{{ config('app.url') }}/my/purchases/{{ $purchase->lot_id }}" class="btn">View Purchase &amp; Download Gate Pass</a>
     </div>
     <div class="footer">
-        &copy; {{ now()->year }} Auto Auction Platform. This is an automated notification.
+        &copy; {{ now()->year }} Colonial Auto Auction. This is an automated notification.
     </div>
 </div>
 </body>

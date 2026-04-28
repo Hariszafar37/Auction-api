@@ -41,7 +41,7 @@
 
 <div class="header">
     <div>
-        <h1>AUTO AUCTION</h1>
+        <h1>Colonial Auto Auction</h1>
         <p style="font-size:11px; color:#94a3b8; margin-top:4px;">INVOICE</p>
     </div>
     <div class="invoice-meta">
