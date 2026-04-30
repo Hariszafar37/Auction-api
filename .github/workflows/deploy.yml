@@ -1,0 +1,44 @@
+name: Deploy backend to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            cd /var/www/car-auction-api
+            echo "==> git pull"
+            git fetch --all --prune
+            git reset --hard origin/main
+            echo "==> composer install"
+            composer install --no-dev --optimize-autoloader --no-interaction
+            echo "==> migrate"
+            php artisan migrate --force
+            echo "==> caches"
+            php artisan config:cache
+            php artisan route:cache
+            php artisan event:cache
+            echo "==> permissions"
+            sudo chown -R ubuntu:www-data storage bootstrap/cache
+            sudo chmod -R ug+rwx storage bootstrap/cache
+            echo "==> restart workers"
+            sudo supervisorctl restart horizon reverb
+            echo "==> done $(date -u +%FT%TZ)"
