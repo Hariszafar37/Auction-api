@@ -14,14 +14,10 @@ class EmailLogsController extends Controller
      * GET /api/v1/dev/email-logs
      *
      * Reads laravel.log, extracts every email entry logged by the `log` mail
-     * driver, and returns them as structured JSON.  Blocked in production.
+     * driver, and returns them as structured JSON.
      */
     public function index(): JsonResponse
     {
-        if (app()->environment('production')) {
-            return response()->json(['error' => 'Not available in production.'], 403);
-        }
-
         $logPath = storage_path('logs/laravel.log');
 
         if (! file_exists($logPath) || ! is_readable($logPath)) {
