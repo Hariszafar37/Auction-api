@@ -32,9 +32,17 @@ use App\Http\Controllers\Api\V1\User\PaymentMethodController;
 use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
 use App\Http\Controllers\Api\V1\UserDocumentController;
+use App\Http\Controllers\Api\V1\Dev\EmailLogsController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+    | Dev / Testing Utilities  (blocked in production by controller guard)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/dev/email-logs', [EmailLogsController::class, 'index']);
 
     /*
     |--------------------------------------------------------------------------
