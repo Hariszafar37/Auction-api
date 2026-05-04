@@ -83,10 +83,12 @@ class EmailLogsController extends Controller
         preg_match('/^\[.+?\] \w+\.\w+: From: (.+?)[\r\n]/m', $block, $fromM);
         preg_match('/^To: (.+?)[\r\n]/m',                     $block, $toM);
         preg_match('/^Subject: (.+?)[\r\n]/m',                $block, $subM);
+        preg_match('/^Message-ID: <(.+?)>/m',                 $block, $msgIdM);
 
-        $from    = trim($fromM[1]  ?? '');
-        $to      = trim($toM[1]   ?? '');
-        $subject = trim($subM[1]  ?? '');
+        $from      = trim($fromM[1]   ?? '');
+        $to        = trim($toM[1]    ?? '');
+        $subject   = trim($subM[1]   ?? '');
+        $messageId = trim($msgIdM[1] ?? '');
 
         if (! $to || ! $subject) {
             return null;
@@ -144,8 +146,11 @@ class EmailLogsController extends Controller
         // Fix quoted-printable encoding artefacts that the log driver leaves behind.
         $plainText = str_replace(['Â©', '=\r\n', '=\n'], ['©', '', ''], $plainText);
 
+        // Message-ID is unique per email; fall back to content hash when absent.
+        $id = $messageId ? md5($messageId) : md5($timestamp . $to . $subject . $from);
+
         return [
-            'id'           => md5($timestamp . $to . $subject),
+            'id'           => $id,
             'timestamp'    => $timestamp,
             'from'         => $from,
             'to'           => $to,
