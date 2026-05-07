@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\V1\Admin\AdminPoaController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
+use App\Http\Controllers\Api\V1\Admin\AdminDashboardController;
+use App\Http\Controllers\Api\V1\Admin\AdminBidController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auction\AuctionController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
@@ -388,6 +390,16 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{lot}/if-sale/approve', [AdminAuctionLotController::class, 'approveIfSale'])->name('if-sale.approve');
                 Route::post('/{lot}/if-sale/reject',  [AdminAuctionLotController::class, 'rejectIfSale'])->name('if-sale.reject');
             });
+
+            // Dashboard KPIs & charts
+            Route::prefix('dashboard')->name('dashboard.')->group(function () {
+                Route::get('/stats',              [AdminDashboardController::class, 'stats'])->name('stats');
+                Route::get('/revenue',            [AdminDashboardController::class, 'revenue'])->name('revenue');
+                Route::get('/auction-breakdown',  [AdminDashboardController::class, 'auctionBreakdown'])->name('auction-breakdown');
+            });
+
+            // Platform-wide bid history audit
+            Route::get('/bids', [AdminBidController::class, 'index'])->name('bids.index');
         });
     });
 });
