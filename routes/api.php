@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
 use App\Http\Controllers\Api\V1\Admin\AdminDashboardController;
 use App\Http\Controllers\Api\V1\Admin\AdminBidController;
+use App\Http\Controllers\Api\V1\Admin\AdminDisputeController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auction\AuctionController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
@@ -396,10 +397,19 @@ Route::prefix('v1')->group(function () {
                 Route::get('/stats',              [AdminDashboardController::class, 'stats'])->name('stats');
                 Route::get('/revenue',            [AdminDashboardController::class, 'revenue'])->name('revenue');
                 Route::get('/auction-breakdown',  [AdminDashboardController::class, 'auctionBreakdown'])->name('auction-breakdown');
+                Route::get('/report/pdf',         [AdminDashboardController::class, 'reportPdf'])->name('report.pdf');
             });
 
             // Platform-wide bid history audit
             Route::get('/bids', [AdminBidController::class, 'index'])->name('bids.index');
+
+            // Dispute management
+            Route::prefix('disputes')->name('disputes.')->group(function () {
+                Route::get('/',             [AdminDisputeController::class, 'index'])->name('index');
+                Route::post('/',            [AdminDisputeController::class, 'store'])->name('store');
+                Route::get('/{dispute}',    [AdminDisputeController::class, 'show'])->name('show');
+                Route::patch('/{dispute}',  [AdminDisputeController::class, 'update'])->name('update');
+            });
         });
     });
 });
