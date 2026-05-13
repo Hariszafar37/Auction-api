@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
 use App\Http\Controllers\Api\V1\Admin\AdminDashboardController;
+use App\Http\Controllers\Api\V1\Admin\AdminLocationController;
 use App\Http\Controllers\Api\V1\Admin\AdminBidController;
 use App\Http\Controllers\Api\V1\Admin\AdminDisputeController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\Api\V1\Auction\AuctionController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
 use App\Http\Controllers\Api\V1\PowerOfAttorneyController;
 use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
+use App\Http\Controllers\Api\V1\Dealer\DealerDashboardController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleMediaController;
 use App\Http\Controllers\Api\V1\Seller\SellerApplicationController;
@@ -34,6 +36,7 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\User\PaymentMethodController;
 use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
+use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\UserDocumentController;
 use App\Http\Controllers\Api\V1\Dev\EmailLogsController;
 use Illuminate\Support\Facades\Route;
@@ -209,6 +212,15 @@ Route::prefix('v1')->group(function () {
             Route::get('/locations',         [VehicleController::class, 'locations'])->name('locations');
             Route::get('/{vehicle}',         [VehicleController::class, 'show'])->name('show');
             Route::post('/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('notify');
+        });
+
+        // Platform locations (public read — active only)
+        Route::get('/locations', [LocationController::class, 'index'])->name('locations.index');
+
+        // Dealer portal dashboard & lot tracking
+        Route::prefix('my/dealer')->name('my.dealer.')->middleware('role:dealer')->group(function () {
+            Route::get('/dashboard', [DealerDashboardController::class, 'dashboard'])->name('dashboard');
+            Route::get('/lots',      [DealerDashboardController::class, 'lots'])->name('lots');
         });
 
         // Seller application (individual users only — validated in controller)
@@ -390,6 +402,15 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{lot}/close',           [AdminAuctionLotController::class, 'close'])->name('close');
                 Route::post('/{lot}/if-sale/approve', [AdminAuctionLotController::class, 'approveIfSale'])->name('if-sale.approve');
                 Route::post('/{lot}/if-sale/reject',  [AdminAuctionLotController::class, 'rejectIfSale'])->name('if-sale.reject');
+            });
+
+            // Location management
+            Route::prefix('locations')->name('locations.')->group(function () {
+                Route::get('/',              [AdminLocationController::class, 'index'])->name('index');
+                Route::post('/',             [AdminLocationController::class, 'store'])->name('store');
+                Route::get('/{location}',    [AdminLocationController::class, 'show'])->name('show');
+                Route::patch('/{location}',  [AdminLocationController::class, 'update'])->name('update');
+                Route::delete('/{location}', [AdminLocationController::class, 'destroy'])->name('destroy');
             });
 
             // Dashboard KPIs & charts
