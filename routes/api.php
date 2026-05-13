@@ -19,6 +19,9 @@ use App\Http\Controllers\Api\V1\Admin\AdminPoaController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
+use App\Http\Controllers\Api\V1\Admin\AdminDashboardController;
+use App\Http\Controllers\Api\V1\Admin\AdminBidController;
+use App\Http\Controllers\Api\V1\Admin\AdminDisputeController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auction\AuctionController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
@@ -387,6 +390,25 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{lot}/close',           [AdminAuctionLotController::class, 'close'])->name('close');
                 Route::post('/{lot}/if-sale/approve', [AdminAuctionLotController::class, 'approveIfSale'])->name('if-sale.approve');
                 Route::post('/{lot}/if-sale/reject',  [AdminAuctionLotController::class, 'rejectIfSale'])->name('if-sale.reject');
+            });
+
+            // Dashboard KPIs & charts
+            Route::prefix('dashboard')->name('dashboard.')->group(function () {
+                Route::get('/stats',              [AdminDashboardController::class, 'stats'])->name('stats');
+                Route::get('/revenue',            [AdminDashboardController::class, 'revenue'])->name('revenue');
+                Route::get('/auction-breakdown',  [AdminDashboardController::class, 'auctionBreakdown'])->name('auction-breakdown');
+                Route::get('/report/pdf',         [AdminDashboardController::class, 'reportPdf'])->name('report.pdf');
+            });
+
+            // Platform-wide bid history audit
+            Route::get('/bids', [AdminBidController::class, 'index'])->name('bids.index');
+
+            // Dispute management
+            Route::prefix('disputes')->name('disputes.')->group(function () {
+                Route::get('/',             [AdminDisputeController::class, 'index'])->name('index');
+                Route::post('/',            [AdminDisputeController::class, 'store'])->name('store');
+                Route::get('/{dispute}',    [AdminDisputeController::class, 'show'])->name('show');
+                Route::patch('/{dispute}',  [AdminDisputeController::class, 'update'])->name('update');
             });
         });
     });
