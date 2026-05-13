@@ -24,22 +24,24 @@ class DealerLotResource extends JsonResource
             'sold_price'   => $this->sold_price,
             'dealer_only'  => $this->dealer_only,
 
-            'vehicle' => [
+            // Null-safe: guards against orphaned lots where the related vehicle
+            // or auction was removed without cascading to the lot record.
+            'vehicle' => $this->vehicle ? [
                 'id'    => $this->vehicle->id,
                 'year'  => $this->vehicle->year,
                 'make'  => $this->vehicle->make,
                 'model' => $this->vehicle->model,
                 'trim'  => $this->vehicle->trim,
                 'vin'   => $this->vehicle->vin,
-            ],
+            ] : null,
 
-            'auction' => [
+            'auction' => $this->auction ? [
                 'id'        => $this->auction->id,
                 'title'     => $this->auction->title,
                 'status'    => $this->auction->status->value,
                 'location'  => $this->auction->location,
                 'starts_at' => $this->auction->starts_at->toIso8601String(),
-            ],
+            ] : null,
 
             'opened_at'  => $this->safeIso($this->opened_at),
             'closed_at'  => $this->safeIso($this->closed_at),
