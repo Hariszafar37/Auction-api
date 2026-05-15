@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\V1\User\ProfileController;
 use App\Http\Controllers\Api\V1\User\WonLotsController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\UserDocumentController;
+use App\Http\Controllers\Api\V1\MyDocumentController;
 use App\Http\Controllers\Api\V1\Dev\EmailLogsController;
 use Illuminate\Support\Facades\Route;
 
@@ -221,6 +222,12 @@ Route::prefix('v1')->group(function () {
         Route::prefix('my/dealer')->name('my.dealer.')->middleware('role:dealer')->group(function () {
             Route::get('/dashboard', [DealerDashboardController::class, 'dashboard'])->name('dashboard');
             Route::get('/lots',      [DealerDashboardController::class, 'lots'])->name('lots');
+        });
+
+        // My compliance documents (any authenticated user)
+        Route::prefix('my/documents')->name('my.documents.')->group(function () {
+            Route::get('/',                            [MyDocumentController::class, 'index'])->name('index');
+            Route::post('/{document}/reupload',        [MyDocumentController::class, 'reupload'])->name('reupload');
         });
 
         // Seller application (individual users only — validated in controller)
