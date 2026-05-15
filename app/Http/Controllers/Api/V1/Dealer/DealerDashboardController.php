@@ -84,6 +84,7 @@ class DealerDashboardController extends Controller
     {
         $user          = $request->user();
         $validStatuses = self::validStatuses();
+        $perPage       = min($request->integer('per_page', 15), 100);
 
         $query = AuctionLot::whereHas('vehicle', fn ($q) => $q->where('seller_id', $user->id))
             ->with(['vehicle', 'auction'])
@@ -91,9 +92,13 @@ class DealerDashboardController extends Controller
                 $request->status && in_array($request->status, $validStatuses, true),
                 fn ($q) => $q->where('status', $request->status),
             )
+            ->when(
+                $request->filled('auction_id') && is_numeric($request->auction_id),
+                fn ($q) => $q->where('auction_id', (int) $request->auction_id),
+            )
             ->orderByDesc('created_at');
 
-        $paginated = $query->paginate(15);
+        $paginated = $query->paginate($perPage);
 
         return response()->json([
             'success' => true,
