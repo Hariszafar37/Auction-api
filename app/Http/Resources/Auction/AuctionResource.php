@@ -17,6 +17,7 @@ class AuctionResource extends JsonResource
             'title'       => $this->title,
             'description' => $this->description,
             'location'    => $this->location,
+            'location_id' => $this->location_id,
             'timezone'    => $this->timezone,
             'starts_at'   => $this->safeIso($this->starts_at),
             'ends_at'     => $this->safeIso($this->ends_at),

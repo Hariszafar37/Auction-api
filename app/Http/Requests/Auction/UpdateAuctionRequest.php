@@ -16,7 +16,8 @@ class UpdateAuctionRequest extends FormRequest
         return [
             'title'       => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'location'    => ['nullable', 'string', 'max:255'],
+            'location'    => ['sometimes', 'nullable', 'string', 'max:255'],
+            'location_id' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
             'timezone'    => ['nullable', 'timezone'],
             'starts_at'   => ['sometimes', 'date', 'after:now'],
             'notes'       => ['nullable', 'string'],

@@ -16,6 +16,7 @@ class Auction extends Model
         'title',
         'description',
         'location',
+        'location_id',
         'timezone',
         'starts_at',
         'ends_at',
@@ -35,6 +36,11 @@ class Auction extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(Location::class);
     }
 
     public function lots(): HasMany
