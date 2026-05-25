@@ -10,6 +10,7 @@ use App\Events\Auction\LotStatusChanged;
 use App\Jobs\Auction\NotifyVehicleSubscribers;
 use App\Models\Auction;
 use App\Models\AuctionLot;
+use App\Models\Location;
 use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Support\Facades\DB;
@@ -25,10 +26,13 @@ class AuctionService
 
     public function createAuction(array $data, User $creator): Auction
     {
+        [$locationId, $locationStr] = $this->resolveLocation($data);
+
         return Auction::create([
             'title'       => $data['title'],
             'description' => $data['description'] ?? null,
-            'location'    => $data['location'] ?? null,
+            'location'    => $locationStr,
+            'location_id' => $locationId,
             'timezone'    => $data['timezone'] ?? 'America/New_York',
             'starts_at'   => $data['starts_at'],
             'status'      => AuctionStatus::Draft,
@@ -45,14 +49,25 @@ class AuctionService
             ]);
         }
 
-        $auction->update(array_filter([
-            'title'       => $data['title'] ?? null,
+        $updates = array_filter([
+            'title'     => $data['title'] ?? null,
             'description' => $data['description'] ?? null,
-            'location'    => $data['location'] ?? null,
-            'timezone'    => $data['timezone'] ?? null,
-            'starts_at'   => $data['starts_at'] ?? null,
-            'notes'       => $data['notes'] ?? null,
-        ], fn ($v) => $v !== null));
+            'timezone'  => $data['timezone'] ?? null,
+            'starts_at' => $data['starts_at'] ?? null,
+            'notes'     => $data['notes'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        // location_id takes precedence over free-text location string
+        if (isset($data['location_id'])) {
+            $location = Location::find($data['location_id']);
+            $updates['location_id'] = $data['location_id'];
+            $updates['location']    = $location?->name ?? $auction->location;
+        } elseif (isset($data['location'])) {
+            $updates['location']    = $data['location'];
+            $updates['location_id'] = null;
+        }
+
+        $auction->update($updates);
 
         return $auction->fresh();
     }
@@ -279,6 +294,17 @@ class AuctionService
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────────
+
+    /** Returns [location_id, location_string] pair from validated request data. */
+    private function resolveLocation(array $data): array
+    {
+        $locationId = $data['location_id'] ?? null;
+        if ($locationId !== null) {
+            $location = Location::find($locationId);
+            return [$locationId, $location?->name];
+        }
+        return [null, $data['location'] ?? null];
+    }
 
     private function buildAuctionSummary(Auction $auction): array
     {
