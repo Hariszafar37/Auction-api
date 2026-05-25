@@ -21,7 +21,6 @@ it('registers a new user and returns next_step=verify_email', function () {
         'primary_phone'            => '555-123-4567',
         'consent_marketing'        => true,
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ]);
@@ -50,7 +49,6 @@ it('user has no password after registration', function () {
         'last_name'                => 'Pass',
         'primary_phone'            => '555-000-0000',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ]);
@@ -68,7 +66,6 @@ it('assigns the buyer role on registration', function () {
         'last_name'                => 'Test',
         'primary_phone'            => '555-111-2222',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ]);
@@ -137,7 +134,6 @@ it('stores middle_name when provided', function () {
         'last_name'                => 'Doe',
         'primary_phone'            => '555-000-0001',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertStatus(201);
@@ -148,21 +144,6 @@ it('stores middle_name when provided', function () {
     ]);
 });
 
-it('rejects registration when agree_bidder_terms is false', function () {
-    $this->postJson('/api/v1/auth/register', [
-        'email'                    => 'test@example.com',
-        'email_confirmation'       => 'test@example.com',
-        'first_name'               => 'Jane',
-        'last_name'                => 'Doe',
-        'primary_phone'            => '555-000-0001',
-        'agree_terms'              => true,
-        'agree_bidder_terms'       => false,
-        'agree_ecomm_consent'      => true,
-        'agree_accuracy_confirmed' => true,
-    ])->assertStatus(422)
-      ->assertJsonPath('errors.agree_bidder_terms', fn ($v) => count($v) > 0);
-});
-
 it('rejects registration when agree_ecomm_consent is false', function () {
     $this->postJson('/api/v1/auth/register', [
         'email'                    => 'test2@example.com',
@@ -171,7 +152,6 @@ it('rejects registration when agree_ecomm_consent is false', function () {
         'last_name'                => 'Doe',
         'primary_phone'            => '555-000-0002',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => false,
         'agree_accuracy_confirmed' => true,
     ])->assertStatus(422)
@@ -186,7 +166,6 @@ it('rejects registration when agree_accuracy_confirmed is false', function () {
         'last_name'                => 'Doe',
         'primary_phone'            => '555-000-0003',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => false,
     ])->assertStatus(422)
@@ -203,7 +182,6 @@ it('stores terms_version on registration', function () {
         'last_name'                => 'Version',
         'primary_phone'            => '555-000-0004',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertStatus(201);
@@ -222,7 +200,6 @@ it('stores registration_ip_address on registration', function () {
         'last_name'                => 'Test',
         'primary_phone'            => '555-000-0005',
         'agree_terms'              => true,
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertStatus(201);

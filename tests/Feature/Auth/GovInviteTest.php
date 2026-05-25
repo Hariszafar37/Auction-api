@@ -75,7 +75,6 @@ it('returns 422 when compliance checkboxes are false on acceptance', function ()
 
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'compliance-false-token',
-        'agree_bidder_terms'       => false,
         'agree_ecomm_consent'      => false,
         'agree_accuracy_confirmed' => false,
     ])->assertStatus(422);
@@ -86,7 +85,6 @@ it('accepts invite, marks email verified, and advances status to pending_passwor
 
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'accept-token-123',
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])
@@ -105,7 +103,6 @@ it('accepts invite, marks email verified, and advances status to pending_passwor
 it('returns 404 for invalid token on acceptance', function () {
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'does-not-exist',
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])
@@ -122,7 +119,6 @@ it('consumed token cannot be used again after acceptance', function () {
     makeInvitedGovUser('one-time-token');
 
     $complianceFields = [
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ];
@@ -142,7 +138,6 @@ it('after acceptance, set-password works using email from invite', function () {
     // Step 1: accept invite
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'flow-token-abc',
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertOk();
@@ -165,7 +160,6 @@ it('gov user login after set-password does not require activation wizard', funct
     // Complete invite + set-password flow
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'login-flow-token',
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertOk();
@@ -189,7 +183,6 @@ it('gov pending_activation user has activation_status pending_approval in /me re
 
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'status-token',
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertOk();
@@ -213,7 +206,6 @@ it('approved gov user login has no activation redirect', function () {
 
     $this->postJson('/api/v1/auth/accept-invite', [
         'token'                    => 'approved-flow-token',
-        'agree_bidder_terms'       => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
     ])->assertOk();
