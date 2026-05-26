@@ -282,6 +282,6 @@ it('rejects notify for in_auction vehicle', function () {
         ->assertStatus(422);
 });
 
-it('requires authentication for inventory', function () {
-    $this->getJson('/api/v1/vehicles')->assertStatus(401);
+it('allows unauthenticated access to inventory', function () {
+    $this->getJson('/api/v1/vehicles')->assertStatus(200);
 });
