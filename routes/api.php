@@ -39,6 +39,7 @@ use App\Http\Controllers\Api\V1\User\WonLotsController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\UserDocumentController;
 use App\Http\Controllers\Api\V1\MyDocumentController;
+use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\Dev\EmailLogsController;
 use Illuminate\Support\Facades\Route;
 
@@ -58,6 +59,9 @@ Route::prefix('v1')->group(function () {
     */
     // Stripe webhook — must be outside auth:sanctum (raw body required)
     Route::post('/webhook/stripe', [WebhookController::class, 'stripe']);
+
+    // Public contact form submission
+    Route::post('/contact', [ContactController::class, 'store']);
 
     Route::get('/health', function () {
         return response()->json([
