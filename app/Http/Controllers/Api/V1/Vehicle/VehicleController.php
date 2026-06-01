@@ -22,17 +22,22 @@ class VehicleController extends Controller
      * Media collection is loaded via spatie/laravel-medialibrary.
      *
      * Filters (all optional):
-     *   search       — partial match on VIN, make, model
-     *   make         — exact match (case-insensitive partial)
-     *   model        — exact match (case-insensitive partial)
-     *   body_type    — enum value
-     *   year_min     — integer
-     *   year_max     — integer
-     *   mileage_max  — integer
-     *   status       — available | in_auction
-     *   page         — page number (default: 1)
-     *   location     — filter by auction location (matches in_auction vehicles only)
-     *   per_page     — items per page (max: 50, default: 20)
+     *   search           — partial match on VIN, make, model
+     *   make             — case-insensitive partial match
+     *   model            — case-insensitive partial match
+     *   body_type        — enum value
+     *   year_min         — integer
+     *   year_max         — integer
+     *   mileage_max      — integer
+     *   status           — available | in_auction
+     *   page             — page number (default: 1)
+     *   location         — filter by auction location (matches in_auction vehicles only)
+     *   per_page         — items per page (max: 50, default: 20)
+     *   transmission     — case-insensitive partial match
+     *   fuel_type        — exact match
+     *   color            — case-insensitive partial match
+     *   condition_light  — green | red | blue
+     *   sort             — newest (default) | oldest
      */
     public function index(Request $request): JsonResponse
     {
@@ -60,7 +65,19 @@ class VehicleController extends Controller
                 $request->filled('status') && in_array($request->status, ['available', 'in_auction']),
                 fn ($q) => $q->where('status', $request->status),
             )
-            ->orderByDesc('created_at');
+            // Additional filters from reference inventory page
+            ->when($request->transmission, fn ($q, $v) => $q->where('transmission', 'like', "%{$v}%"))
+            ->when($request->fuel_type,    fn ($q, $v) => $q->where('fuel_type', $v))
+            ->when($request->color,        fn ($q, $v) => $q->where('color', 'like', "%{$v}%"))
+            ->when($request->condition_light && in_array($request->condition_light, ['green', 'red', 'blue']),
+                fn ($q) => $q->where('condition_light', $request->condition_light)
+            )
+            // Sort: default newest first; "oldest" reverses
+            ->when(
+                $request->sort === 'oldest',
+                fn ($q) => $q->reorder()->orderBy('created_at'),
+                fn ($q) => $q->orderByDesc('created_at'),
+            );
 
         $paginated = $query->paginate($perPage)->appends($request->query());
 

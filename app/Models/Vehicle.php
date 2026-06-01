@@ -33,6 +33,8 @@ class Vehicle extends Model implements HasMedia
         'fuel_type',
         'condition_light',
         'condition_notes',
+        'condition_report_url',
+        'additional_info',
         'has_title',
         'title_state',
         'status',

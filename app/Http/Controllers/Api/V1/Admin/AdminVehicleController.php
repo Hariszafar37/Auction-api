@@ -60,10 +60,12 @@ class AdminVehicleController extends Controller
             'transmission'    => ['nullable', 'string', 'max:30'],
             'engine'          => ['nullable', 'string', 'max:50'],
             'fuel_type'       => ['nullable', 'string', 'max:30'],
-            'condition_light' => ['required', 'in:green,red,blue'],
-            'condition_notes' => ['nullable', 'string', 'max:1000'],
-            'has_title'       => ['boolean'],
-            'title_state'     => ['nullable', 'string', 'max:5'],
+            'condition_light'      => ['required', 'in:green,red,blue'],
+            'condition_notes'      => ['nullable', 'string', 'max:1000'],
+            'condition_report_url' => ['nullable', 'url', 'max:2048'],
+            'additional_info'      => ['nullable', 'string'],
+            'has_title'            => ['boolean'],
+            'title_state'          => ['nullable', 'string', 'max:5'],
         ]);
 
         $vehicle = Vehicle::create($data);

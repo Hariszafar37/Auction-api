@@ -109,13 +109,14 @@ it('dealer can create a vehicle', function () {
     $dealer = makeDealerUser();
 
     $payload = [
-        'vin'             => 'JT2BF22K1W9876543',
-        'year'            => 2021,
-        'make'            => 'Honda',
-        'model'           => 'Accord',
-        'body_type'       => 'car',
-        'condition_light' => 'green',
-        'has_title'       => true,
+        'vin'                  => 'JT2BF22K1W9876543',
+        'year'                 => 2021,
+        'make'                 => 'Honda',
+        'model'                => 'Accord',
+        'body_type'            => 'car',
+        'condition_light'      => 'green',
+        'condition_report_url' => 'https://reports.example.com/test',
+        'has_title'            => true,
     ];
 
     $response = $this->actingAs($dealer, 'sanctum')
@@ -136,13 +137,14 @@ it('dealer create sets seller_id from authenticated user, not payload', function
     $other  = makeDealerUser();
 
     $payload = [
-        'seller_id'       => $other->id, // should be ignored
-        'vin'             => 'JT2BF22K1W1111111',
-        'year'            => 2021,
-        'make'            => 'Ford',
-        'model'           => 'Mustang',
-        'body_type'       => 'car',
-        'condition_light' => 'green',
+        'seller_id'            => $other->id, // should be ignored
+        'vin'                  => 'JT2BF22K1W1111111',
+        'year'                 => 2021,
+        'make'                 => 'Ford',
+        'model'                => 'Mustang',
+        'body_type'            => 'car',
+        'condition_light'      => 'green',
+        'condition_report_url' => 'https://reports.example.com/test',
     ];
 
     $this->actingAs($dealer, 'sanctum')
