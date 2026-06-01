@@ -119,7 +119,8 @@ test('invoice total equals sum of all fee components', function () {
         + (float) $invoice->buyer_fee_amount
         + (float) $invoice->tax_amount
         + (float) $invoice->tags_amount
-        + (float) $invoice->storage_fee_amount;
+        + (float) $invoice->storage_fee_amount
+        + (float) $invoice->online_platform_fee_amount;
 
     expect((float) $invoice->total_amount)->toBe($expected);
 });

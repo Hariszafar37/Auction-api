@@ -101,5 +101,19 @@ class FeeConfigurationSeeder extends Seeder
                 'notes'            => '$25 per day after vehicle pickup deadline.',
             ]
         );
+
+        // ── Online Platform Fee ───────────────────────────────────────────────────
+        FeeConfiguration::updateOrCreate(
+            ['fee_type' => 'online_platform_fee', 'location' => null],
+            [
+                'label'            => 'Online Platform Fee',
+                'calculation_type' => 'flat',
+                'amount'           => 50.00,
+                'applies_to'       => 'buyer',
+                'is_active'        => true,
+                'sort_order'       => 6,
+                'notes'            => 'Flat $50 fee for using the online auction platform.',
+            ]
+        );
     }
 }

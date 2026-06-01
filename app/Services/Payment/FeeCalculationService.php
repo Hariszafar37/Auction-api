@@ -26,15 +26,16 @@ class FeeCalculationService
      */
     public function calculate(int $salePrice, ?string $location = null, int $storageDays = 0): array
     {
-        $feeTypes = ['deposit', 'buyer_fee', 'tax', 'tags', 'storage'];
+        $feeTypes = ['deposit', 'buyer_fee', 'tax', 'tags', 'storage', 'online_platform_fee'];
         $snapshot = [];
         $results  = [
-            'deposit_amount'     => 0.0,
-            'buyer_fee_amount'   => 0.0,
-            'tax_amount'         => 0.0,
-            'tags_amount'        => 0.0,
-            'storage_days'       => $storageDays,
-            'storage_fee_amount' => 0.0,
+            'deposit_amount'              => 0.0,
+            'buyer_fee_amount'            => 0.0,
+            'tax_amount'                  => 0.0,
+            'tags_amount'                 => 0.0,
+            'storage_days'                => $storageDays,
+            'storage_fee_amount'          => 0.0,
+            'online_platform_fee_amount'  => 0.0,
         ];
 
         foreach ($feeTypes as $type) {
@@ -57,11 +58,12 @@ class FeeCalculationService
             ];
 
             match($type) {
-                'deposit'   => $results['deposit_amount']     = $amount,
-                'buyer_fee' => $results['buyer_fee_amount']   = $amount,
-                'tax'       => $results['tax_amount']         = $amount,
-                'tags'      => $results['tags_amount']        = $amount,
-                'storage'   => $results['storage_fee_amount'] = $amount,
+                'deposit'              => $results['deposit_amount']             = $amount,
+                'buyer_fee'            => $results['buyer_fee_amount']           = $amount,
+                'tax'                  => $results['tax_amount']                 = $amount,
+                'tags'                 => $results['tags_amount']                = $amount,
+                'storage'              => $results['storage_fee_amount']         = $amount,
+                'online_platform_fee'  => $results['online_platform_fee_amount'] = $amount,
             };
         }
 
@@ -69,7 +71,8 @@ class FeeCalculationService
             + $results['buyer_fee_amount']
             + $results['tax_amount']
             + $results['tags_amount']
-            + $results['storage_fee_amount'];
+            + $results['storage_fee_amount']
+            + $results['online_platform_fee_amount'];
         // Deposit is collected separately — included in total as a line item, NOT added again
         $results['snapshot'] = $snapshot;
 
