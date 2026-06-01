@@ -35,6 +35,7 @@ class VehicleController extends Controller
      *   per_page         — items per page (max: 50, default: 20)
      *   transmission     — case-insensitive partial match
      *   fuel_type        — exact match
+     *   drivetrain       — case-insensitive partial match
      *   color            — case-insensitive partial match
      *   condition_light  — green | red | blue
      *   sort             — newest (default) | oldest
@@ -68,6 +69,7 @@ class VehicleController extends Controller
             // Additional filters from reference inventory page
             ->when($request->transmission, fn ($q, $v) => $q->where('transmission', 'like', "%{$v}%"))
             ->when($request->fuel_type,    fn ($q, $v) => $q->where('fuel_type', $v))
+            ->when($request->drivetrain,   fn ($q, $v) => $q->where('drivetrain', 'like', "%{$v}%"))
             ->when($request->color,        fn ($q, $v) => $q->where('color', 'like', "%{$v}%"))
             ->when($request->condition_light && in_array($request->condition_light, ['green', 'red', 'blue']),
                 fn ($q) => $q->where('condition_light', $request->condition_light)

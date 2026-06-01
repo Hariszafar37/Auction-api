@@ -35,6 +35,7 @@ class PublicVehicleResource extends JsonResource
             'transmission'     => $this->transmission,
             'engine'           => $this->engine,
             'fuel_type'        => $this->fuel_type,
+            'drivetrain'       => $this->drivetrain,
             'condition_light'      => $this->condition_light,
             'condition_notes'      => $this->condition_notes,
             'condition_report_url' => $this->condition_report_url,

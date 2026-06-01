@@ -84,6 +84,7 @@ class DealerVehicleController extends Controller
             'transmission'    => ['nullable', 'string', 'max:30'],
             'engine'          => ['nullable', 'string', 'max:50'],
             'fuel_type'       => ['nullable', 'string', 'max:30'],
+            'drivetrain'      => ['nullable', 'string', 'max:30'],
             'condition_light'      => ['required', 'in:green,red,blue'],
             'condition_notes'      => ['nullable', 'string', 'max:1000'],
             'condition_report_url' => ['required', 'url', 'max:2048'],

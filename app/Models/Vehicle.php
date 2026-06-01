@@ -31,6 +31,7 @@ class Vehicle extends Model implements HasMedia
         'transmission',
         'engine',
         'fuel_type',
+        'drivetrain',
         'condition_light',
         'condition_notes',
         'condition_report_url',
