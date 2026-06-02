@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Support\FormatsDates;
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -49,8 +50,8 @@ class AdminVehicleResource extends JsonResource
                 ->map(fn ($m) => [
                     'id'         => $m->id,
                     'type'       => $m->collection_name === 'videos' ? 'video' : 'image',
-                    'url'        => $m->getUrl(),
-                    'thumb_url'  => $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : null,
+                    'url'        => MediaUrl::temporary($m),
+                    'thumb_url'  => $m->hasGeneratedConversion('thumb') ? MediaUrl::temporary($m, 'thumb') : null,
                     'file_name'  => $m->file_name,
                     'mime_type'  => $m->mime_type,
                     'collection' => $m->collection_name,

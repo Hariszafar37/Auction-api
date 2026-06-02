@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Vehicle\ReorderVehicleMediaRequest;
 use App\Http\Requests\Vehicle\UploadVehicleMediaRequest;
 use App\Models\Vehicle;
+use App\Support\MediaUrl;
 use Illuminate\Http\JsonResponse;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -138,8 +139,8 @@ class AdminVehicleMediaController extends Controller
         return [
             'id'         => $media->id,
             'type'       => $media->collection_name === 'videos' ? 'video' : 'image',
-            'url'        => $media->getUrl(),
-            'thumb_url'  => $media->hasGeneratedConversion('thumb') ? $media->getUrl('thumb') : null,
+            'url'        => MediaUrl::temporary($media),
+            'thumb_url'  => $media->hasGeneratedConversion('thumb') ? MediaUrl::temporary($media, 'thumb') : null,
             'file_name'  => $media->file_name,
             'mime_type'  => $media->mime_type,
             'collection' => $media->collection_name,
