@@ -21,7 +21,7 @@ function approvalDashboardAdmin(): User
     return $admin;
 }
 
-function makePendingDealer(string $company = 'Acme Motors'): DealerProfile
+function apdPendingDealer(string $company = 'Acme Motors'): DealerProfile
 {
     $user = User::factory()->create(['status' => 'pending_activation', 'account_type' => 'dealer']);
     $user->assignRole('buyer');
@@ -33,7 +33,7 @@ function makePendingDealer(string $company = 'Acme Motors'): DealerProfile
     ]);
 }
 
-function makeApprovedSeller(): SellerProfile
+function apdApprovedSeller(): SellerProfile
 {
     $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
     $user->assignRole('seller');
@@ -48,8 +48,8 @@ function makeApprovedSeller(): SellerProfile
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
 it('returns a summary and normalized records across all approval types', function () {
-    makePendingDealer();
-    makeApprovedSeller();
+    apdPendingDealer();
+    apdApprovedSeller();
 
     $business = User::factory()->create(['account_type' => 'business']);
     BusinessProfile::create([
@@ -74,8 +74,8 @@ it('returns a summary and normalized records across all approval types', functio
 });
 
 it('filters dashboard records by status', function () {
-    makePendingDealer();
-    makeApprovedSeller();
+    apdPendingDealer();
+    apdApprovedSeller();
 
     $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
         ->getJson('/api/v1/admin/approvals/dashboard?status=pending');
@@ -90,8 +90,8 @@ it('filters dashboard records by status', function () {
 });
 
 it('filters dashboard records by approval type', function () {
-    makePendingDealer();
-    makeApprovedSeller();
+    apdPendingDealer();
+    apdApprovedSeller();
 
     $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
         ->getJson('/api/v1/admin/approvals/dashboard?approval_type=seller');
@@ -102,8 +102,8 @@ it('filters dashboard records by approval type', function () {
 });
 
 it('searches dashboard records by company name', function () {
-    makePendingDealer('Unique Auto House');
-    makePendingDealer('Other Dealer');
+    apdPendingDealer('Unique Auto House');
+    apdPendingDealer('Other Dealer');
 
     $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
         ->getJson('/api/v1/admin/approvals/dashboard?search=Unique');
@@ -117,7 +117,7 @@ it('searches dashboard records by company name', function () {
 
 it('records an approval history row when a dealer is approved', function () {
     $admin   = approvalDashboardAdmin();
-    $profile = makePendingDealer();
+    $profile = apdPendingDealer();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/v1/admin/dealers/{$profile->user_id}/approve")
@@ -136,7 +136,7 @@ it('records an approval history row when a dealer is approved', function () {
 
 it('returns a record history timeline including a synthesized applied entry', function () {
     $admin   = approvalDashboardAdmin();
-    $profile = makePendingDealer();
+    $profile = apdPendingDealer();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/v1/admin/dealers/{$profile->user_id}/approve")
@@ -153,7 +153,7 @@ it('returns a record history timeline including a synthesized applied entry', fu
 
 it('synthesizes history for a legacy record reviewed before audit logging existed', function () {
     // Seller approved directly via factory — no approval_histories row exists.
-    $profile = makeApprovedSeller();
+    $profile = apdApprovedSeller();
 
     $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
         ->getJson("/api/v1/admin/approvals/seller/{$profile->id}/history");
@@ -181,7 +181,7 @@ it('returns 422 for an unknown approval type', function () {
 
 it('returns the global approval history feed', function () {
     $admin   = approvalDashboardAdmin();
-    $profile = makePendingDealer();
+    $profile = apdPendingDealer();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/v1/admin/dealers/{$profile->user_id}/reject", ['reason' => 'No good'])
