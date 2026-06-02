@@ -7,6 +7,7 @@ use App\Events\Account\POARejected;
 use App\Http\Controllers\Controller;
 use App\Models\PowerOfAttorney;
 use App\Models\User;
+use App\Services\Approval\ApprovalService;
 use App\Support\SignedFileUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,13 +48,17 @@ class AdminPoaController extends Controller
     /**
      * POST /api/v1/admin/users/{user}/poa/{poa}/approve
      */
-    public function approve(User $user, PowerOfAttorney $poa): JsonResponse
+    public function approve(User $user, PowerOfAttorney $poa, ApprovalService $approvals): JsonResponse
     {
+        $previousStatus = $poa->status;
+
         $poa->update([
             'status'      => 'approved',
             'reviewed_by' => auth()->id(),
             'reviewed_at' => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_POA, $poa->id, $user->id, 'approved', $previousStatus, 'approved', null, auth()->id());
 
         event(new POAApproved($user, $poa->fresh()));
 
@@ -63,11 +68,13 @@ class AdminPoaController extends Controller
     /**
      * POST /api/v1/admin/users/{user}/poa/{poa}/reject
      */
-    public function reject(User $user, PowerOfAttorney $poa, Request $request): JsonResponse
+    public function reject(User $user, PowerOfAttorney $poa, Request $request, ApprovalService $approvals): JsonResponse
     {
         $request->validate([
             'admin_notes' => ['required', 'string'],
         ]);
+
+        $previousStatus = $poa->status;
 
         $poa->update([
             'status'      => 'rejected',
@@ -75,6 +82,8 @@ class AdminPoaController extends Controller
             'reviewed_by' => auth()->id(),
             'reviewed_at' => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_POA, $poa->id, $user->id, 'rejected', $previousStatus, 'rejected', $request->admin_notes, auth()->id());
 
         event(new POARejected($user, $poa->fresh(), $request->admin_notes));
 

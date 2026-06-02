@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\CreateGovProfileRequest;
 use App\Models\GovProfile;
 use App\Models\User;
 use App\Notifications\GovAccountInvite;
+use App\Services\Approval\ApprovalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -115,7 +116,7 @@ class AdminGovController extends Controller
     /**
      * POST /api/v1/admin/government/{user}/approve
      */
-    public function approve(User $user): JsonResponse
+    public function approve(User $user, ApprovalService $approvals): JsonResponse
     {
         $profile = $user->govProfile;
 
@@ -123,11 +124,15 @@ class AdminGovController extends Controller
             return $this->error('No government profile found for this user.', 404, 'not_found');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status' => 'approved',
             'reviewed_by'     => auth()->id(),
             'reviewed_at'     => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_GOVERNMENT, $profile->id, $user->id, 'approved', $previousStatus, 'approved', null, auth()->id());
 
         $user->update(['status' => 'active']);
         event(new AccountApproved($user, 'government'));
@@ -139,7 +144,7 @@ class AdminGovController extends Controller
     /**
      * POST /api/v1/admin/government/{user}/reject
      */
-    public function reject(User $user, Request $request): JsonResponse
+    public function reject(User $user, Request $request, ApprovalService $approvals): JsonResponse
     {
         $request->validate([
             'rejection_reason' => ['required_without:reason', 'nullable', 'string'],
@@ -153,12 +158,16 @@ class AdminGovController extends Controller
             return $this->error('No government profile found for this user.', 404, 'not_found');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status'  => 'rejected',
             'rejection_reason' => $rejectionReason,
             'reviewed_by'      => auth()->id(),
             'reviewed_at'      => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_GOVERNMENT, $profile->id, $user->id, 'rejected', $previousStatus, 'rejected', $rejectionReason, auth()->id());
 
         $user->update(['status' => 'suspended']);
         event(new AccountRejected($user, 'government', $rejectionReason));

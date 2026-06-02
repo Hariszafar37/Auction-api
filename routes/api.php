@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\Payment\PaymentController;
 use App\Http\Controllers\Api\V1\Purchase\GatePassController;
 use App\Http\Controllers\Api\V1\Purchase\PurchaseController;
 use App\Http\Controllers\Api\V1\Purchase\TransportController;
+use App\Http\Controllers\Api\V1\Admin\AdminApprovalController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
 use App\Http\Controllers\Api\V1\Admin\AdminGovController;
@@ -309,6 +310,13 @@ Route::prefix('v1')->group(function () {
                 Route::get('/pending',         [AdminUserController::class, 'pendingSellers'])->name('pending')->middleware('permission:sellers.view');
                 Route::post('/{user}/approve', [AdminUserController::class, 'approveSeller'])->name('approve')->middleware('permission:sellers.approve');
                 Route::post('/{user}/reject',  [AdminUserController::class, 'rejectSeller'])->name('reject')->middleware('permission:sellers.approve');
+            });
+
+            // Approval dashboard / history report — centralized view across all approval types
+            Route::prefix('approvals')->name('approvals.')->group(function () {
+                Route::get('/dashboard',          [AdminApprovalController::class, 'dashboard'])->name('dashboard');
+                Route::get('/history',            [AdminApprovalController::class, 'history'])->name('history');
+                Route::get('/{type}/{id}/history', [AdminApprovalController::class, 'recordHistory'])->name('record-history');
             });
 
             // Auctions — admin CRUD + lifecycle
