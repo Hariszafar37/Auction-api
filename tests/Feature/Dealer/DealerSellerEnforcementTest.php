@@ -67,12 +67,14 @@ function makeActiveDealer(): User
 function validVehiclePayload(array $overrides = []): array
 {
     return array_merge([
-        'vin'             => 'JT2BF22K1W' . rand(1000000, 9999999),
-        'year'            => 2021,
-        'make'            => 'Toyota',
-        'model'           => 'Camry',
-        'body_type'       => 'car',
-        'condition_light' => 'green',
+        'vin'                  => 'JT2BF22K1W' . rand(1000000, 9999999),
+        'year'                 => 2021,
+        'make'                 => 'Toyota',
+        'model'                => 'Camry',
+        'body_type'            => 'car',
+        'condition_light'      => 'green',
+        'condition_report_url' => 'https://reports.example.com/test-report',
+        'has_title'            => true,
     ], $overrides);
 }
 
