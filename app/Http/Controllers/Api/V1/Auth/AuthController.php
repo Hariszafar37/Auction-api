@@ -50,7 +50,6 @@ class AuthController extends Controller
                 'status'                   => 'pending_email_verification',
                 'registration_ip_address'  => $request->ip(),
                 'terms_version'            => config('app.terms_version', '1.0'),
-                'agree_bidder_terms'       => (bool) $request->agree_bidder_terms,
                 'agree_ecomm_consent'      => (bool) $request->agree_ecomm_consent,
                 'agree_accuracy_confirmed' => (bool) $request->agree_accuracy_confirmed,
             ]);
@@ -299,7 +298,6 @@ class AuthController extends Controller
     {
         $request->validate([
             'token'                    => ['required', 'string'],
-            'agree_bidder_terms'       => ['required', 'accepted'],
             'agree_ecomm_consent'      => ['required', 'accepted'],
             'agree_accuracy_confirmed' => ['required', 'accepted'],
         ]);
@@ -318,7 +316,6 @@ class AuthController extends Controller
             'agreed_terms_at'          => now(),
             'terms_version'            => config('app.terms_version', '1.0'),
             'registration_ip_address'  => $request->ip(),
-            'agree_bidder_terms'       => true,
             'agree_ecomm_consent'      => true,
             'agree_accuracy_confirmed' => true,
         ]);

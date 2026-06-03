@@ -203,7 +203,8 @@ test('total equals sale price plus all line fees excluding deposit', function ()
         + $result['buyer_fee_amount']
         + $result['tax_amount']
         + $result['tags_amount']
-        + $result['storage_fee_amount'];
+        + $result['storage_fee_amount']
+        + $result['online_platform_fee_amount'];
 
     expect($result['total_amount'])->toBe($expected);
     // Deposit is a hold — not added to total

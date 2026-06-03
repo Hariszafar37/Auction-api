@@ -13,6 +13,7 @@ use App\Http\Requests\Admin\UpdateUserRoleRequest;
 use App\Http\Requests\Admin\UpdateUserStatusRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\Approval\ApprovalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -159,7 +160,7 @@ class AdminUserController extends Controller
     /**
      * POST /api/v1/admin/dealers/{user}/approve
      */
-    public function approveDealer(Request $request, User $user): JsonResponse
+    public function approveDealer(Request $request, User $user, ApprovalService $approvals): JsonResponse
     {
         $profile = $user->dealerProfile;
 
@@ -171,12 +172,16 @@ class AdminUserController extends Controller
             return $this->error('Dealer is already approved.', 422, 'already_approved');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status' => 'approved',
             'rejection_reason' => null,
             'reviewed_by'     => $request->user()->id,
             'reviewed_at'     => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_DEALER, $profile->id, $user->id, 'approved', $previousStatus, 'approved', null, $request->user()->id);
 
         $user->update(['status' => 'active']);
         event(new AccountApproved($user, 'dealer'));
@@ -190,7 +195,7 @@ class AdminUserController extends Controller
     /**
      * POST /api/v1/admin/dealers/{user}/reject
      */
-    public function rejectDealer(RejectDealerRequest $request, User $user): JsonResponse
+    public function rejectDealer(RejectDealerRequest $request, User $user, ApprovalService $approvals): JsonResponse
     {
         $profile = $user->dealerProfile;
 
@@ -198,12 +203,16 @@ class AdminUserController extends Controller
             return $this->error('User does not have a dealer profile.', 404, 'not_found');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status'  => 'rejected',
             'rejection_reason' => $request->reason,
             'reviewed_by'      => $request->user()->id,
             'reviewed_at'      => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_DEALER, $profile->id, $user->id, 'rejected', $previousStatus, 'rejected', $request->reason, $request->user()->id);
 
         $user->update(['status' => 'suspended']);
         event(new AccountRejected($user, 'dealer', $request->reason));
@@ -240,7 +249,7 @@ class AdminUserController extends Controller
     /**
      * POST /api/v1/admin/businesses/{user}/approve
      */
-    public function approveBusiness(Request $request, User $user): JsonResponse
+    public function approveBusiness(Request $request, User $user, ApprovalService $approvals): JsonResponse
     {
         $profile = $user->businessProfile;
 
@@ -252,12 +261,16 @@ class AdminUserController extends Controller
             return $this->error('Business is already approved.', 422, 'already_approved');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status'  => 'approved',
             'rejection_reason' => null,
             'reviewed_by'      => $request->user()->id,
             'reviewed_at'      => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_BUSINESS, $profile->id, $user->id, 'approved', $previousStatus, 'approved', null, $request->user()->id);
 
         $user->update(['status' => 'active']);
         event(new AccountApproved($user, 'business'));
@@ -271,7 +284,7 @@ class AdminUserController extends Controller
     /**
      * POST /api/v1/admin/businesses/{user}/reject
      */
-    public function rejectBusiness(RejectBusinessRequest $request, User $user): JsonResponse
+    public function rejectBusiness(RejectBusinessRequest $request, User $user, ApprovalService $approvals): JsonResponse
     {
         $profile = $user->businessProfile;
 
@@ -279,12 +292,16 @@ class AdminUserController extends Controller
             return $this->error('User does not have a business profile.', 404, 'not_found');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status'  => 'rejected',
             'rejection_reason' => $request->reason,
             'reviewed_by'      => $request->user()->id,
             'reviewed_at'      => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_BUSINESS, $profile->id, $user->id, 'rejected', $previousStatus, 'rejected', $request->reason, $request->user()->id);
 
         $user->update(['status' => 'suspended']);
         event(new AccountRejected($user, 'business', $request->reason));
@@ -326,7 +343,7 @@ class AdminUserController extends Controller
      * Unlike dealer/business approval, the user is already 'active' — we only
      * assign the seller role and update account_intent.
      */
-    public function approveSeller(Request $request, User $user): JsonResponse
+    public function approveSeller(Request $request, User $user, ApprovalService $approvals): JsonResponse
     {
         // Guard: only individuals can become sellers via this flow
         if ($user->account_type !== 'individual') {
@@ -347,12 +364,16 @@ class AdminUserController extends Controller
             return $this->error('Seller application is already approved.', 422, 'already_approved');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status'  => 'approved',
             'rejection_reason' => null,
             'reviewed_by'      => $request->user()->id,
             'reviewed_at'      => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_SELLER, $profile->id, $user->id, 'approved', $previousStatus, 'approved', null, $request->user()->id);
 
         // Assign seller role while retaining buyer role
         $user->assignRole('seller');
@@ -373,7 +394,7 @@ class AdminUserController extends Controller
      * Rejects an individual seller application.
      * User remains active as a buyer — only seller capability is denied.
      */
-    public function rejectSeller(RejectSellerRequest $request, User $user): JsonResponse
+    public function rejectSeller(RejectSellerRequest $request, User $user, ApprovalService $approvals): JsonResponse
     {
         $profile = $user->sellerProfile;
 
@@ -381,12 +402,16 @@ class AdminUserController extends Controller
             return $this->error('User does not have a seller application.', 404, 'not_found');
         }
 
+        $previousStatus = $profile->approval_status;
+
         $profile->update([
             'approval_status'  => 'rejected',
             'rejection_reason' => $request->reason,
             'reviewed_by'      => $request->user()->id,
             'reviewed_at'      => now(),
         ]);
+
+        $approvals->record(ApprovalService::TYPE_SELLER, $profile->id, $user->id, 'rejected', $previousStatus, 'rejected', $request->reason, $request->user()->id);
 
         // User remains active as a buyer — no status change
         event(new AccountRejected($user, 'seller', $request->reason));

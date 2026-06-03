@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Purchase;
 
 use App\Http\Resources\Payment\InvoiceResource;
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -44,8 +45,8 @@ class PurchaseDetailResource extends JsonResource
                 'mileage'          => $vehicle->mileage,
                 'condition_light'  => $vehicle->condition_light,
                 'condition_notes'  => $vehicle->condition_notes,
-                'thumbnail_url'    => $vehicle->getFirstMediaUrl('images'),
-                'photo_urls'       => $vehicle->getMedia('images')->map(fn ($m) => $m->getUrl())->values()->all(),
+                'thumbnail_url'    => optional($vehicle->getFirstMedia('images'), fn ($m) => MediaUrl::temporary($m)) ?? '',
+                'photo_urls'       => $vehicle->getMedia('images')->map(fn ($m) => MediaUrl::temporary($m))->values()->all(),
             ] : null,
 
             // Invoice summary (full resource when loaded)

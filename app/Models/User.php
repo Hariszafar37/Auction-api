@@ -42,7 +42,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'stripe_customer_id',
         'registration_ip_address',
         'terms_version',
-        'agree_bidder_terms',
         'agree_ecomm_consent',
         'agree_accuracy_confirmed',
     ];
@@ -61,7 +60,6 @@ class User extends Authenticatable implements MustVerifyEmail
             'password_set_at'          => 'datetime',
             'activation_completed_at'  => 'datetime',
             'consent_marketing'        => 'boolean',
-            'agree_bidder_terms'       => 'boolean',
             'agree_ecomm_consent'      => 'boolean',
             'agree_accuracy_confirmed' => 'boolean',
         ];

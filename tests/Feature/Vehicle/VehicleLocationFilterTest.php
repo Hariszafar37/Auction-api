@@ -97,9 +97,9 @@ it('returns empty array when no active auctions have locations', function () {
         ->assertJsonPath('data', []);
 });
 
-it('returns 401 for unauthenticated locations request', function () {
+it('allows unauthenticated access to locations', function () {
     $this->getJson('/api/v1/vehicles/locations')
-        ->assertStatus(401);
+        ->assertStatus(200);
 });
 
 // ── Inventory location filter ─────────────────────────────────────────────

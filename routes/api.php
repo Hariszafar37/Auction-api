@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\Payment\PaymentController;
 use App\Http\Controllers\Api\V1\Purchase\GatePassController;
 use App\Http\Controllers\Api\V1\Purchase\PurchaseController;
 use App\Http\Controllers\Api\V1\Purchase\TransportController;
+use App\Http\Controllers\Api\V1\Admin\AdminApprovalController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
 use App\Http\Controllers\Api\V1\Admin\AdminGovController;
@@ -39,6 +40,7 @@ use App\Http\Controllers\Api\V1\User\WonLotsController;
 use App\Http\Controllers\Api\V1\LocationController;
 use App\Http\Controllers\Api\V1\UserDocumentController;
 use App\Http\Controllers\Api\V1\MyDocumentController;
+use App\Http\Controllers\Api\V1\ContactController;
 use App\Http\Controllers\Api\V1\Dev\EmailLogsController;
 use Illuminate\Support\Facades\Route;
 
@@ -58,6 +60,9 @@ Route::prefix('v1')->group(function () {
     */
     // Stripe webhook — must be outside auth:sanctum (raw body required)
     Route::post('/webhook/stripe', [WebhookController::class, 'stripe']);
+
+    // Public contact form submission
+    Route::post('/contact', [ContactController::class, 'store']);
 
     Route::get('/health', function () {
         return response()->json([
@@ -110,6 +115,35 @@ Route::prefix('v1')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
+    | Public Routes (no auth required — optional token resolves user context)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('optional.auth')->group(function () {
+
+        // Auction browsing — read-only, publicly visible
+        Route::prefix('auctions')->name('auctions.')->group(function () {
+            Route::get('/',                              [AuctionController::class, 'index'])->name('index');
+            Route::get('/calendar',                      [AuctionController::class, 'calendar'])->name('calendar');
+            Route::get('/{auction}',                     [AuctionController::class, 'show'])->name('show');
+            Route::get('/{auction}/lots',                [AuctionController::class, 'lots'])->name('lots');
+            Route::get('/{auction}/lots/{lot}',          [AuctionController::class, 'showLot'])->name('lots.show');
+            Route::get('/{auction}/lots/{lot}/bids',     [BidController::class, 'bidHistory'])->name('lots.bids');
+        });
+
+        // Vehicle inventory — read-only, publicly visible
+        // NOTE: /locations registered BEFORE /{vehicle} to avoid routing conflict.
+        Route::prefix('vehicles')->name('vehicles.')->group(function () {
+            Route::get('/',          [VehicleController::class, 'index'])->name('index');
+            Route::get('/locations', [VehicleController::class, 'locations'])->name('locations');
+            Route::get('/{vehicle}', [VehicleController::class, 'show'])->name('show');
+        });
+
+        // Platform locations — read-only, publicly visible
+        Route::get('/locations', [LocationController::class, 'index'])->name('locations.index');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Authenticated Routes
     |--------------------------------------------------------------------------
     */
@@ -158,23 +192,13 @@ Route::prefix('v1')->group(function () {
 
         /*
         |----------------------------------------------------------------------
-        | Public Auction Routes (auth optional but needed for bidding)
+        | Auction Bidding — requires authenticated active user
         |----------------------------------------------------------------------
         */
-        Route::prefix('auctions')->name('auctions.')->group(function () {
-            Route::get('/',           [AuctionController::class, 'index'])->name('index');
-            Route::get('/calendar',   [AuctionController::class, 'calendar'])->name('calendar');
-            Route::get('/{auction}',  [AuctionController::class, 'show'])->name('show');
-            Route::get('/{auction}/lots',                   [AuctionController::class, 'lots'])->name('lots');
-            Route::get('/{auction}/lots/{lot}',             [AuctionController::class, 'showLot'])->name('lots.show');
-
-            // Bid history — public
-            Route::get('/{auction}/lots/{lot}/bids',        [BidController::class, 'bidHistory'])->name('lots.bids');
-
-            // Place bids — requires authenticated active user
-            Route::post('/{auction}/lots/{lot}/bids',                   [BidController::class, 'placeBid'])->name('lots.bids.place');
-            Route::post('/{auction}/lots/{lot}/proxy-bid',              [BidController::class, 'setProxyBid'])->name('lots.proxy-bid');
-            Route::post('/{auction}/lots/{lot}/if-sale/increase-bid',   [BidController::class, 'increaseIfSaleBid'])->name('lots.if-sale.increase-bid');
+        Route::prefix('auctions')->name('auctions.bid.')->group(function () {
+            Route::post('/{auction}/lots/{lot}/bids',                 [BidController::class, 'placeBid'])->name('place');
+            Route::post('/{auction}/lots/{lot}/proxy-bid',            [BidController::class, 'setProxyBid'])->name('proxy');
+            Route::post('/{auction}/lots/{lot}/if-sale/increase-bid', [BidController::class, 'increaseIfSaleBid'])->name('if-sale');
         });
 
         // My bid history
@@ -202,21 +226,8 @@ Route::prefix('v1')->group(function () {
             Route::post('/{invoice}/pay',             [PaymentController::class, 'pay'])->name('pay');
         });
 
-        /*
-        |----------------------------------------------------------------------
-        | Public Vehicle Inventory
-        |----------------------------------------------------------------------
-        */
-        // NOTE: /locations registered BEFORE /{vehicle} to avoid routing conflict.
-        Route::prefix('vehicles')->name('vehicles.')->group(function () {
-            Route::get('/',                  [VehicleController::class, 'index'])->name('index');
-            Route::get('/locations',         [VehicleController::class, 'locations'])->name('locations');
-            Route::get('/{vehicle}',         [VehicleController::class, 'show'])->name('show');
-            Route::post('/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('notify');
-        });
-
-        // Platform locations (public read — active only)
-        Route::get('/locations', [LocationController::class, 'index'])->name('locations.index');
+        // Vehicle notifications — requires auth
+        Route::post('/vehicles/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('vehicles.notify');
 
         // Dealer portal dashboard & lot tracking
         Route::prefix('my/dealer')->name('my.dealer.')->middleware('role:dealer')->group(function () {
@@ -299,6 +310,13 @@ Route::prefix('v1')->group(function () {
                 Route::get('/pending',         [AdminUserController::class, 'pendingSellers'])->name('pending')->middleware('permission:sellers.view');
                 Route::post('/{user}/approve', [AdminUserController::class, 'approveSeller'])->name('approve')->middleware('permission:sellers.approve');
                 Route::post('/{user}/reject',  [AdminUserController::class, 'rejectSeller'])->name('reject')->middleware('permission:sellers.approve');
+            });
+
+            // Approval dashboard / history report — centralized view across all approval types
+            Route::prefix('approvals')->name('approvals.')->group(function () {
+                Route::get('/dashboard',          [AdminApprovalController::class, 'dashboard'])->name('dashboard');
+                Route::get('/history',            [AdminApprovalController::class, 'history'])->name('history');
+                Route::get('/{type}/{id}/history', [AdminApprovalController::class, 'recordHistory'])->name('record-history');
             });
 
             // Auctions — admin CRUD + lifecycle

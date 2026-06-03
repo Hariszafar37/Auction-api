@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Support\FormatsDates;
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,9 +26,12 @@ class AdminVehicleResource extends JsonResource
             'transmission'     => $this->transmission,
             'engine'           => $this->engine,
             'fuel_type'        => $this->fuel_type,
-            'condition_light'  => $this->condition_light,
-            'condition_notes'  => $this->condition_notes,
-            'has_title'        => $this->has_title,
+            'drivetrain'       => $this->drivetrain,
+            'condition_light'      => $this->condition_light,
+            'condition_notes'      => $this->condition_notes,
+            'condition_report_url' => $this->condition_report_url,
+            'additional_info'      => $this->additional_info,
+            'has_title'            => $this->has_title,
             'title_state'      => $this->title_state,
             'title_received'   => (bool) $this->title_received,
             'status'           => $this->status,
@@ -46,8 +50,8 @@ class AdminVehicleResource extends JsonResource
                 ->map(fn ($m) => [
                     'id'         => $m->id,
                     'type'       => $m->collection_name === 'videos' ? 'video' : 'image',
-                    'url'        => $m->getUrl(),
-                    'thumb_url'  => $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : null,
+                    'url'        => MediaUrl::temporary($m),
+                    'thumb_url'  => $m->hasGeneratedConversion('thumb') ? MediaUrl::temporary($m, 'thumb') : null,
                     'file_name'  => $m->file_name,
                     'mime_type'  => $m->mime_type,
                     'collection' => $m->collection_name,

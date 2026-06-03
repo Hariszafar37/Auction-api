@@ -39,13 +39,14 @@ class InvoiceResource extends JsonResource
             ]),
 
             // Fee line items
-            'sale_price'          => $this->sale_price,
-            'deposit_amount'      => (float) $this->deposit_amount,
-            'buyer_fee_amount'    => (float) $this->buyer_fee_amount,
-            'tax_amount'          => (float) $this->tax_amount,
-            'tags_amount'         => (float) $this->tags_amount,
-            'storage_days'        => $this->storage_days,
-            'storage_fee_amount'  => (float) $this->storage_fee_amount,
+            'sale_price'                  => $this->sale_price,
+            'deposit_amount'              => (float) $this->deposit_amount,
+            'buyer_fee_amount'            => (float) $this->buyer_fee_amount,
+            'tax_amount'                  => (float) $this->tax_amount,
+            'tags_amount'                 => (float) $this->tags_amount,
+            'storage_days'                => $this->storage_days,
+            'storage_fee_amount'          => (float) $this->storage_fee_amount,
+            'online_platform_fee_amount'  => (float) $this->online_platform_fee_amount,
 
             // Totals
             'total_amount'       => (float) $this->total_amount,

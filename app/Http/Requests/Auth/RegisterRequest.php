@@ -23,7 +23,6 @@ class RegisterRequest extends FormRequest
             'secondary_phone'          => ['nullable', 'string', 'regex:/^[\+]?[\d\s\-\(\)]{7,30}$/', 'max:30'],
             'consent_marketing'        => ['nullable', 'boolean'],
             'agree_terms'              => ['required', 'accepted'],
-            'agree_bidder_terms'       => ['required', 'accepted'],
             'agree_ecomm_consent'      => ['required', 'accepted'],
             'agree_accuracy_confirmed' => ['required', 'accepted'],
         ];
@@ -35,7 +34,6 @@ class RegisterRequest extends FormRequest
             'email.unique'                        => 'An account with this email already exists.',
             'email_confirmation.same'             => 'The email addresses do not match.',
             'agree_terms.accepted'                => 'You must accept the terms and conditions to register.',
-            'agree_bidder_terms.accepted'         => 'You must accept the bidder terms to register.',
             'agree_ecomm_consent.accepted'        => 'You must accept the e-commerce consent to register.',
             'agree_accuracy_confirmed.accepted'   => 'You must confirm the accuracy of your information.',
             'primary_phone.regex'                 => 'Please provide a valid phone number.',
