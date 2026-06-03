@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Vehicle;
 
 use App\Support\FormatsDates;
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -74,8 +75,8 @@ class PublicVehicleResource extends JsonResource
                 ->values()
                 ->map(fn ($m) => [
                     'id'         => $m->id,
-                    'url'        => $m->getUrl(),
-                    'thumb_url'  => $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : null,
+                    'url'        => MediaUrl::temporary($m),
+                    'thumb_url'  => $m->hasGeneratedConversion('thumb') ? MediaUrl::temporary($m, 'thumb') : null,
                     'mime_type'  => $m->mime_type,
                     'collection' => $m->collection_name,
                     'order'      => $m->order_column,

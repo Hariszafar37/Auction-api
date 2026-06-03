@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Auction;
 
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -33,10 +34,10 @@ class VehicleResource extends JsonResource
             // Shape matches frontend VehicleImage type: { url, thumbnail }
             'images' => $this->whenLoaded('media', function () {
                 return $this->getMedia('images')->map(fn ($m) => [
-                    'url'       => $m->getUrl(),
+                    'url'       => MediaUrl::temporary($m),
                     'thumbnail' => $m->hasGeneratedConversion('thumb')
-                        ? $m->getUrl('thumb')
-                        : $m->getUrl(),
+                        ? MediaUrl::temporary($m, 'thumb')
+                        : MediaUrl::temporary($m),
                 ])->values()->all();
             }, []),
         ];
