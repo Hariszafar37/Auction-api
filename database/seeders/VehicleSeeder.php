@@ -264,14 +264,19 @@ class VehicleSeeder extends Seeder
         ];
 
         foreach ($vehicles as $index => $data) {
-            Vehicle::create(array_merge($data, [
-                'seller_id' => $admin->id,
-                'vin'       => $this->generateVin($index),
-                'status'    => 'available',
-            ]));
+            // Idempotent: keyed on the deterministic VIN so re-running on every
+            // deploy never duplicates. firstOrCreate (not updateOrCreate) so a live
+            // status change (e.g. sold / in_auction) is never reset back to available.
+            Vehicle::firstOrCreate(
+                ['vin' => $this->generateVin($index)],
+                array_merge($data, [
+                    'seller_id' => $admin->id,
+                    'status'    => 'available',
+                ])
+            );
         }
 
-        $this->command->info('Vehicles seeded: 15 vehicles (all status = available)');
+        $this->command->info('Vehicles seeded: 15 vehicles (idempotent — keyed on VIN)');
     }
 
     /**
