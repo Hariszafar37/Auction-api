@@ -22,13 +22,16 @@ class AuctionLotSeeder extends Seeder
     {
         $auction = Auction::where('status', 'scheduled')->firstOrFail();
 
-        $vehicles = Vehicle::where('status', 'available')
-            ->orderBy('id')
+        // Take the first 5 vehicles by id (no status filter) so re-runs select the
+        // SAME vehicles — after the first seed these are already 'in_auction', and a
+        // status filter would otherwise pick different vehicles or report a false
+        // "not enough vehicles" error on every subsequent deploy.
+        $vehicles = Vehicle::orderBy('id')
             ->take(5)
             ->get();
 
         if ($vehicles->count() < 5) {
-            $this->command->error('Not enough available vehicles to seed lots. Run VehicleSeeder first.');
+            $this->command->error('Not enough vehicles to seed lots. Run VehicleSeeder first.');
             return;
         }
 
@@ -73,20 +76,30 @@ class AuctionLotSeeder extends Seeder
         foreach ($lotConfigs as $i => $config) {
             $vehicle = $vehicles[$i];
 
-            AuctionLot::create([
-                'auction_id'               => $auction->id,
-                'vehicle_id'               => $vehicle->id,
-                'lot_number'               => $config['lot_number'],
-                'status'                   => LotStatus::Pending,
-                'starting_bid'             => $config['starting_bid'],
-                'reserve_price'            => $config['reserve_price'],
-                'countdown_seconds'        => $config['countdown_seconds'],
-                'requires_seller_approval' => $config['requires_seller_approval'],
-                'bid_count'                => 0,
-            ]);
+            // Idempotent: keyed on (auction_id, lot_number) so re-running on every
+            // deploy never duplicates. firstOrCreate (not updateOrCreate) so live
+            // bidding state (status, bid_count) on a seeded lot is never wiped.
+            $lot = AuctionLot::firstOrCreate(
+                [
+                    'auction_id' => $auction->id,
+                    'lot_number' => $config['lot_number'],
+                ],
+                [
+                    'vehicle_id'               => $vehicle->id,
+                    'status'                   => LotStatus::Pending,
+                    'starting_bid'             => $config['starting_bid'],
+                    'reserve_price'            => $config['reserve_price'],
+                    'countdown_seconds'        => $config['countdown_seconds'],
+                    'requires_seller_approval' => $config['requires_seller_approval'],
+                    'bid_count'                => 0,
+                ]
+            );
 
-            // Mark vehicle as in_auction to match the assigned state
-            $vehicle->update(['status' => 'in_auction']);
+            // Only flip the vehicle into the auction when the lot was just created,
+            // so we never override a live status (sold, etc.) on re-seed.
+            if ($lot->wasRecentlyCreated) {
+                $vehicle->update(['status' => 'in_auction']);
+            }
         }
 
         $this->command->info("Auction lots seeded: 5 lots assigned to \"{$auction->title}\"");
