@@ -75,8 +75,14 @@ class WebhookController extends Controller
             return;
         }
 
+        // ── Money-critical path: mark the buyer's payment completed and recalc the
+        // invoice. Kept minimal and atomic. Side-effects (deposit capture, pickup
+        // transition, receipt email) are deliberately moved OUTSIDE this block so a
+        // failure in any of them can never roll back the payment nor 500 the webhook.
+        // If THIS transaction throws (other than a duplicate), the webhook returns
+        // non-2xx so Stripe retries — the desired behaviour for the money step.
         try {
-            DB::transaction(function () use ($payment, $invoice, $paymentIntent) {
+            DB::transaction(function () use ($payment, $invoice) {
                 $payment->update([
                     'status'       => 'completed',
                     'processed_at' => now(),
@@ -84,24 +90,6 @@ class WebhookController extends Controller
 
                 // recalculateBalance sets invoice status to Paid/Partial
                 $invoice->recalculateBalance();
-
-                // FIX 3: capture the deposit hold once invoice is fully paid
-                if (
-                    $invoice->fresh()->isPaid()
-                    && $invoice->stripe_deposit_intent_id
-                    && $invoice->deposit_status === 'authorized'
-                ) {
-                    $stripe = new StripeClient(config('services.stripe.secret'));
-                    $stripe->paymentIntents->capture($invoice->stripe_deposit_intent_id);
-
-                    InvoicePayment::where('reference', $invoice->stripe_deposit_intent_id)
-                        ->update(['status' => 'completed', 'processed_at' => now()]);
-
-                    $invoice->update([
-                        'deposit_status'      => 'captured',
-                        'deposit_captured_at' => now(),
-                    ]);
-                }
             });
         } catch (UniqueConstraintViolationException $e) {
             // Webhook fired twice — duplicate blocked by unique constraint on reference column.
@@ -112,16 +100,83 @@ class WebhookController extends Controller
             return;
         }
 
-        // Transition pickup status if invoice is now fully paid
-        $freshInvoice = $invoice->fresh();
-        if ($freshInvoice->isPaid()) {
-            app(PurchaseService::class)->handleInvoicePaid($freshInvoice);
+        $invoice->refresh();
+
+        // ── Non-fatal side-effects. Each is isolated; one failing never blocks the
+        // others or the 200 response. The invoice is already marked paid above.
+        if ($invoice->isPaid()) {
+            $this->captureDepositHold($invoice);
+            $this->transitionPickupStatus($invoice);
         }
 
-        // Queue receipt email — reload fresh invoice after all mutations
-        $invoice = $payment->fresh()->invoice->load(['buyer', 'vehicle', 'auction', 'lot', 'payments']);
-        if ($invoice->buyer?->email) {
-            Mail::to($invoice->buyer->email)->queue(new PaymentReceived($invoice, $payment->fresh()));
+        $this->sendPaymentReceiptEmail($payment);
+    }
+
+    /**
+     * Capture the manual-capture deposit hold once the invoice is fully paid.
+     * Non-fatal: a Stripe failure (hold expired, never confirmed, already captured,
+     * etc.) is logged and must never block marking the invoice paid. Mirrors the
+     * non-fatal contract of InvoiceService::initiateDepositHold().
+     */
+    private function captureDepositHold(Invoice $invoice): void
+    {
+        if (! $invoice->stripe_deposit_intent_id || $invoice->deposit_status !== 'authorized') {
+            return;
+        }
+
+        try {
+            $stripe = new StripeClient(config('services.stripe.secret'));
+            $stripe->paymentIntents->capture($invoice->stripe_deposit_intent_id);
+
+            InvoicePayment::where('reference', $invoice->stripe_deposit_intent_id)
+                ->update(['status' => 'completed', 'processed_at' => now()]);
+
+            $invoice->update([
+                'deposit_status'      => 'captured',
+                'deposit_captured_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Stripe webhook: deposit capture failed (non-fatal)', [
+                'invoice_id'        => $invoice->id,
+                'deposit_intent_id' => $invoice->stripe_deposit_intent_id,
+                'error'             => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Transition pickup status (awaiting_payment → ready_for_pickup) and queue the
+     * pickup-ready email. Non-fatal — isolated from the payment-marking path.
+     */
+    private function transitionPickupStatus(Invoice $invoice): void
+    {
+        try {
+            app(PurchaseService::class)->handleInvoicePaid($invoice);
+        } catch (\Throwable $e) {
+            Log::warning('Stripe webhook: pickup transition failed (non-fatal)', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Queue the payment receipt email. Non-fatal — a mail/PDF failure (e.g. a
+     * synchronous queue driver with a misconfigured mailer) must not fail the
+     * webhook now that the invoice is already marked paid.
+     */
+    private function sendPaymentReceiptEmail(InvoicePayment $payment): void
+    {
+        try {
+            $invoice = $payment->fresh()->invoice->load(['buyer', 'vehicle', 'auction', 'lot', 'payments']);
+            if ($invoice->buyer?->email) {
+                Mail::to($invoice->buyer->email)->queue(new PaymentReceived($invoice, $payment->fresh()));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Stripe webhook: payment receipt email failed (non-fatal)', [
+                'invoice_id' => $payment->invoice_id,
+                'error'      => $e->getMessage(),
+            ]);
         }
     }
 

@@ -253,6 +253,43 @@ test('webhook creates completed payment record on success', function () {
         ->and($payment->processed_at)->not->toBeNull();
 });
 
+test('webhook still marks invoice paid when deposit capture fails (non-fatal)', function () {
+    // Regression: previously the deposit capture ran INSIDE the DB transaction and
+    // only UniqueConstraintViolation was caught. A failing capture (expired/never-
+    // confirmed hold) threw → rollback → HTTP 500 → invoice never marked paid and
+    // Stripe retried forever. An empty secret makes capture() throw deterministically.
+    config(['services.stripe.secret' => '']);
+
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer, [
+        'stripe_deposit_intent_id' => 'pi_deposit_never_confirmed',
+        'deposit_status'           => 'authorized',
+    ]);
+
+    $payment = InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_deposit_capture_fail',
+        'status'     => 'pending',
+    ]);
+
+    $webhook = makeStripeWebhookRequest(['id' => 'pi_test_deposit_capture_fail', 'amount' => 580000]);
+
+    $this->call('POST', '/api/v1/webhook/stripe', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => $webhook['header'],
+        'CONTENT_TYPE'          => 'application/json',
+    ], $webhook['payload'])->assertOk();
+
+    // The buyer payment is completed and the invoice is paid despite the capture failure.
+    // deposit_status stays 'authorized' (not 'captured') since the capture did not succeed.
+    expect($invoice->fresh()->status)->toBe(InvoiceStatus::Paid)
+        ->and($invoice->fresh()->paid_at)->not->toBeNull()
+        ->and($payment->fresh()->status)->toBe('completed')
+        ->and($invoice->fresh()->deposit_status)->toBe('authorized');
+});
+
 test('webhook returns 200 for unrecognised payment intent', function () {
     // If no InvoicePayment record matches the PI, webhook must still return 200
     // so Stripe does not retry indefinitely

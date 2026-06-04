@@ -15,7 +15,7 @@ class StoreFeeConfigurationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'fee_type'         => ['required', Rule::in(['deposit', 'buyer_fee', 'tax', 'tags', 'storage'])],
+            'fee_type'         => ['required', Rule::in(['deposit', 'buyer_fee', 'tax', 'tags', 'storage', 'online_platform_fee'])],
             'label'            => ['required', 'string', 'max:100'],
             'calculation_type' => ['required', Rule::in(['flat', 'percentage', 'tiered', 'per_day', 'flat_range'])],
             'amount'           => ['nullable', 'numeric', 'min:0'],
