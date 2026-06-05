@@ -85,12 +85,13 @@ abstract class TestCase extends BaseTestCase
                 'billing_country'         => 'US',
                 'billing_city'            => 'Baltimore',
                 'billing_zip_postal_code' => '21201',
-                'payment_method_added'    => true,
-                'cardholder_name'         => 'Test User',
-                'card_brand'              => 'visa',
-                'card_last_four'          => '4242',
-                'card_expiry_month'       => 12,
-                'card_expiry_year'        => (int) now()->year + 5,
+                'payment_method_added'     => true,
+                'stripe_payment_method_id' => 'pm_test_card_visa',
+                'cardholder_name'          => 'Test User',
+                'card_brand'               => 'visa',
+                'card_last_four'           => '4242',
+                'card_expiry_month'        => 12,
+                'card_expiry_year'         => (int) now()->year + 5,
             ]
         );
 

@@ -170,8 +170,9 @@ Route::prefix('v1')->group(function () {
 
         // Payment method (card metadata — optional during activation, required for bidding)
         Route::prefix('users/payment-method')->name('users.payment-method.')->group(function () {
-            Route::get('/',  [PaymentMethodController::class, 'show'])->name('show');
-            Route::post('/', [PaymentMethodController::class, 'store'])->name('store');
+            Route::get('/',              [PaymentMethodController::class, 'show'])->name('show');
+            Route::get('/setup-intent',  [PaymentMethodController::class, 'setupIntent'])->name('setup-intent');
+            Route::post('/',             [PaymentMethodController::class, 'store'])->name('store');
         });
 
         /*
@@ -228,6 +229,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/{invoice}/pdf',              [InvoiceController::class, 'pdf'])->name('pdf');
             // FIX 2: sole PI creation endpoint — webhook is the only place that marks paid
             Route::post('/{invoice}/payment-intent',  [PaymentController::class, 'createPaymentIntent'])->name('payment-intent');
+            // Re-attempt a failed / SCA-pending deposit charge after fixing the card
+            Route::post('/{invoice}/retry-deposit',   [PaymentController::class, 'retryDeposit'])->name('retry-deposit');
             // Offline (cash/check) payment recording — admin only
             Route::post('/{invoice}/pay',             [PaymentController::class, 'pay'])->name('pay');
         });
@@ -420,6 +423,7 @@ Route::prefix('v1')->group(function () {
                 Route::get('/',                                          [AdminInvoiceController::class, 'index'])->name('index');
                 Route::get('/{invoice}',                                 [AdminInvoiceController::class, 'show'])->name('show');
                 Route::post('/{invoice}/void',                           [AdminInvoiceController::class, 'void'])->name('void');
+                Route::post('/{invoice}/default',                        [AdminInvoiceController::class, 'markDefaulted'])->name('default');
                 Route::post('/{invoice}/record-payment',                 [PaymentController::class, 'recordOfflineAsAdmin'])->name('record-payment');
                 Route::patch('/{invoice}/storage',                       [PaymentController::class, 'updateStorage'])->name('storage');
                 Route::post('/{invoice}/payments/{payment}/approve',     [AdminInvoiceController::class, 'approvePayment'])->name('payments.approve');

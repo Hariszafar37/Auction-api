@@ -3,19 +3,21 @@
 namespace App\Services\Payment;
 
 use App\Enums\InvoiceStatus;
+use App\Mail\DepositActionRequired;
 use App\Mail\InvoiceCreated;
 use App\Models\AuctionLot;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Stripe\StripeClient;
 
 class InvoiceService
 {
     public function __construct(
         private readonly FeeCalculationService $fees,
+        private readonly StripeService $stripe,
     ) {}
 
     /**
@@ -62,9 +64,11 @@ class InvoiceService
             ]);
         });
 
-        // FIX 5: Auto-initiate deposit hold via Stripe if configured
-        if ($breakdown['deposit_amount'] > 0 && config('services.stripe.secret')) {
-            $this->initiateDepositHold($invoice, $lot, (float) $breakdown['deposit_amount']);
+        // Capture-as-prepayment: charge the deposit off-session on win using the
+        // buyer's saved card. Credited toward the invoice total (never additive).
+        // Non-fatal — a failure here never blocks invoice creation or the win flow.
+        if ($breakdown['deposit_amount'] > 0 && $this->stripe->configured()) {
+            $this->chargeDeposit($invoice, (float) $breakdown['deposit_amount']);
         }
 
         // FIX 7: Queue invoice created notification email
@@ -108,63 +112,202 @@ class InvoiceService
     // ─── Private helpers ─────────────────────────────────────────────────────────
 
     /**
-     * Create a Stripe PaymentIntent with capture_method=manual to hold the deposit.
-     * Failure is non-fatal — logs a warning and sets deposit_status=pending_manual.
+     * Charge the deposit off-session against the buyer's saved card and credit it
+     * to the invoice (capture-as-prepayment). Idempotent and fully non-fatal:
+     *   - never charges twice (DB guard + Stripe idempotency key),
+     *   - never throws into the win/invoice-creation flow.
+     *
+     * Outcomes:
+     *   success            → deposit_status=captured, completed InvoicePayment,
+     *                        balance_due = total − deposit
+     *   declined / error   → deposit_status=failed, buyer notified to fix card
+     *   SCA required       → deposit_status=requires_action, buyer notified to
+     *                        authenticate (client_secret stored for retry)
+     *   no saved card      → deposit_status=failed, buyer notified
      */
-    private function initiateDepositHold(Invoice $invoice, AuctionLot $lot, float $depositAmount): void
+    public function chargeDeposit(Invoice $invoice, float $depositAmount): void
     {
+        // Idempotency: never re-charge a captured (or already-credited) deposit.
+        if ($invoice->deposit_status === 'captured') {
+            return;
+        }
+        if ($invoice->payments()->where('method', 'deposit')->where('status', 'completed')->exists()) {
+            return;
+        }
+
+        $invoice->loadMissing('buyer.billingInformation');
+        $buyer = $invoice->buyer;
+        $pmId  = $buyer?->billingInformation?->stripe_payment_method_id;
+
+        if (! $buyer || ! $pmId || ! $buyer->stripe_customer_id) {
+            $invoice->update(['deposit_status' => 'failed']);
+            $this->notifyDepositActionRequired($invoice, 'no_payment_method');
+            return;
+        }
+
         try {
-            $stripe = new StripeClient(config('services.stripe.secret'));
-            $buyer  = $lot->buyer ?? $invoice->buyer;
-
-            // Ensure Stripe customer exists
-            if (! $buyer->stripe_customer_id) {
-                $customer = $stripe->customers->create([
-                    'email' => $buyer->email,
-                    'name'  => $buyer->name,
-                    'metadata' => ['user_id' => $buyer->id],
-                ]);
-                $buyer->update(['stripe_customer_id' => $customer->id]);
-            }
-
-            // FIX 1: idempotency key prevents double-charge if this fires twice
-            $pi = $stripe->paymentIntents->create([
-                'amount'         => (int) round($depositAmount * 100),
-                'currency'       => 'usd',
-                'customer'       => $buyer->stripe_customer_id,
-                'capture_method' => 'manual',
-                'metadata'       => [
+            $pi = $this->stripe->chargeOffSession(
+                $buyer->stripe_customer_id,
+                $pmId,
+                (int) round($depositAmount * 100),
+                [
                     'invoice_id'     => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
                     'buyer_id'       => $buyer->id,
                     'type'           => 'deposit',
                 ],
-                'description' => "Deposit hold — Invoice {$invoice->invoice_number}",
-            ], [
-                'idempotency_key' => 'deposit_pi_' . $invoice->id,
-            ]);
+                'deposit_pi_' . $invoice->id,
+                "Deposit — Invoice {$invoice->invoice_number}",
+            );
+        } catch (\Stripe\Exception\CardException $e) {
+            $error       = $e->getError();
+            $needsAction = ($e->getStripeCode() === 'authentication_required');
+            $pi          = $error?->payment_intent ?? null;
 
-            // FIX 3: status='authorized' tracks deposit PI lifecycle separately from buyer payments
-            InvoicePayment::create([
-                'invoice_id'           => $invoice->id,
-                'user_id'              => $buyer->id,
-                'method'               => 'deposit',
-                'amount'               => $depositAmount,
-                'reference'            => $pi->id,
-                'stripe_client_secret' => $pi->client_secret,
-                'status'               => 'authorized',
-            ]);
-
+            $this->recordDepositAttempt(
+                $invoice,
+                $buyer,
+                $depositAmount,
+                $needsAction ? 'requires_action' : 'failed',
+                $pi->id ?? null,
+                $pi->client_secret ?? null,
+            );
             $invoice->update([
-                'stripe_deposit_intent_id' => $pi->id,
-                'deposit_status'           => 'authorized',
+                'stripe_deposit_intent_id' => $pi->id ?? $invoice->stripe_deposit_intent_id,
+                'deposit_status'           => $needsAction ? 'requires_action' : 'failed',
             ]);
+            $this->notifyDepositActionRequired($invoice, $needsAction ? 'requires_action' : 'declined');
+            return;
         } catch (\Throwable $e) {
-            Log::warning('Failed to initiate deposit hold for invoice', [
+            Log::warning('Deposit charge failed (non-fatal)', [
                 'invoice_id' => $invoice->id,
                 'error'      => $e->getMessage(),
             ]);
             $invoice->update(['deposit_status' => 'failed']);
+            $this->notifyDepositActionRequired($invoice, 'failed');
+            return;
+        }
+
+        $this->finalizeCapturedDeposit($invoice, $buyer, $depositAmount, $pi->id);
+    }
+
+    /**
+     * Retry a failed/requires-action deposit charge (e.g. after the buyer fixes
+     * their card). Uses a fresh idempotency key so Stripe re-evaluates the card.
+     * Returns true on a successful capture.
+     */
+    public function retryDeposit(Invoice $invoice): bool
+    {
+        if ($invoice->deposit_status === 'captured' || (float) $invoice->deposit_amount <= 0) {
+            return $invoice->deposit_status === 'captured';
+        }
+        if (! $this->stripe->configured()) {
+            return false;
+        }
+
+        $invoice->loadMissing('buyer.billingInformation');
+        $buyer = $invoice->buyer;
+        $pmId  = $buyer?->billingInformation?->stripe_payment_method_id;
+
+        if (! $buyer || ! $pmId || ! $buyer->stripe_customer_id) {
+            return false;
+        }
+
+        try {
+            $pi = $this->stripe->chargeOffSession(
+                $buyer->stripe_customer_id,
+                $pmId,
+                (int) round((float) $invoice->deposit_amount * 100),
+                [
+                    'invoice_id'     => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'buyer_id'       => $buyer->id,
+                    'type'           => 'deposit',
+                ],
+                'deposit_pi_' . $invoice->id . '_retry_' . now()->timestamp,
+                "Deposit (retry) — Invoice {$invoice->invoice_number}",
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Deposit retry failed', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+            return false;
+        }
+
+        $this->finalizeCapturedDeposit($invoice, $buyer, (float) $invoice->deposit_amount, $pi->id);
+        return true;
+    }
+
+    /**
+     * Record a successful capture: flip/seed the deposit InvoicePayment to
+     * completed and recalc the balance so the deposit is credited toward total.
+     */
+    private function finalizeCapturedDeposit(Invoice $invoice, User $buyer, float $amount, string $piId): void
+    {
+        DB::transaction(function () use ($invoice, $buyer, $amount, $piId) {
+            InvoicePayment::updateOrCreate(
+                ['invoice_id' => $invoice->id, 'method' => 'deposit'],
+                [
+                    'user_id'              => $buyer->id,
+                    'amount'               => $amount,
+                    'reference'            => $piId,
+                    'stripe_client_secret' => null,
+                    'status'               => 'completed',
+                    'processed_at'         => now(),
+                ]
+            );
+
+            $invoice->update([
+                'stripe_deposit_intent_id' => $piId,
+                'deposit_status'           => 'captured',
+                'deposit_captured_at'      => now(),
+            ]);
+
+            $invoice->recalculateBalance();
+        });
+    }
+
+    /**
+     * Seed/flip the deposit InvoicePayment to a non-crediting status
+     * (failed / requires_action) for history + SCA retry.
+     */
+    private function recordDepositAttempt(
+        Invoice $invoice,
+        User $buyer,
+        float $amount,
+        string $status,
+        ?string $piId,
+        ?string $clientSecret = null,
+    ): void {
+        InvoicePayment::updateOrCreate(
+            ['invoice_id' => $invoice->id, 'method' => 'deposit'],
+            [
+                'user_id'              => $buyer->id,
+                'amount'               => $amount,
+                'reference'            => $piId,
+                'stripe_client_secret' => $clientSecret,
+                'status'               => $status,
+            ]
+        );
+    }
+
+    /**
+     * Queue the buyer notification asking them to fix their card / authenticate.
+     * Non-fatal — a mail failure must never affect the deposit flow.
+     */
+    private function notifyDepositActionRequired(Invoice $invoice, string $reason): void
+    {
+        try {
+            $invoice->loadMissing(['buyer', 'vehicle', 'lot']);
+            if ($invoice->buyer?->email) {
+                Mail::to($invoice->buyer->email)->queue(new DepositActionRequired($invoice, $reason));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to queue deposit action-required email', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
         }
     }
 
