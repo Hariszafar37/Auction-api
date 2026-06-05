@@ -160,6 +160,12 @@ Route::prefix('v1')->group(function () {
             Route::get('/',        [ProfileController::class, 'show'])->name('show');
             Route::patch('/',      [ProfileController::class, 'update'])->name('update');
             Route::put('/payment', [ProfileController::class, 'updatePayment'])->name('payment');
+
+            // Self-service edit of activation data sections (active users)
+            Route::put('/account-information',  [ProfileController::class, 'updateAccountInformation'])->name('account-information');
+            Route::put('/billing-information',  [ProfileController::class, 'updateBillingInformation'])->name('billing-information');
+            Route::put('/business-information', [ProfileController::class, 'updateBusinessInformation'])->name('business-information');
+            Route::put('/dealer-information',   [ProfileController::class, 'updateDealerInformation'])->name('dealer-information');
         });
 
         // Payment method (card metadata — optional during activation, required for bidding)

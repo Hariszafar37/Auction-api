@@ -217,6 +217,7 @@ class AuthController extends Controller
         $user = $request->user()->load([
             'accountInformation',
             'dealerInformation',
+            'businessInformation',
             'billingInformation',
             'documents',
         ]);
