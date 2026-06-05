@@ -65,8 +65,10 @@ class UserResource extends JsonResource
 
             'dealer_information'      => $this->whenLoaded('dealerInformation', fn () => $this->dealerInformation ? [
                 'company_name'            => $this->dealerInformation->company_name,
+                'dba_name'                => $this->dealerInformation->dba_name,
                 'owner_name'              => $this->dealerInformation->owner_name,
                 'phone'                   => $this->dealerInformation->phone,
+                'office_phone'            => $this->dealerInformation->office_phone,
                 'primary_contact'         => $this->dealerInformation->primary_contact,
                 'license_number'          => $this->dealerInformation->license_number,
                 'license_expiration_date' => $this->dealerInformation->license_expiration_date?->toDateString(),
@@ -76,6 +78,10 @@ class UserResource extends JsonResource
                 'dealer_city'             => $this->dealerInformation->dealer_city,
                 'dealer_state'            => $this->dealerInformation->dealer_state,
                 'dealer_zip_code'         => $this->dealerInformation->dealer_zip_code,
+                'salesman_name'           => $this->dealerInformation->salesman_name,
+                'salesman_license_number' => $this->dealerInformation->salesman_license_number,
+                'salesman_license_state'  => $this->dealerInformation->salesman_license_state,
+                'salesman_license_expiry' => $this->dealerInformation->salesman_license_expiry?->toDateString(),
             ] : null),
 
             'business_information'    => $this->whenLoaded('businessInformation', fn () => $this->businessInformation ? [
