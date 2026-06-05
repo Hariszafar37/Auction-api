@@ -17,6 +17,7 @@ class UserBillingInformation extends Model
         'billing_state',
         'billing_zip_postal_code',
         'payment_method_added',
+        'stripe_payment_method_id',
         'cardholder_name',
         'card_brand',
         'card_last_four',
@@ -34,12 +35,20 @@ class UserBillingInformation extends Model
     }
 
     /**
-     * True if a card on file exists and its expiry month/year is in the future
-     * (inclusive of the current month — cards remain valid through end of month).
+     * True if a chargeable card on file exists and its expiry month/year is in
+     * the future (inclusive of the current month — cards remain valid through
+     * end of month).
+     *
+     * Requires a reusable Stripe PaymentMethod id: metadata alone is not enough
+     * because deposits are charged off-session against the saved pm_... handle.
      */
     public function hasValidCard(): bool
     {
         if (! $this->payment_method_added) {
+            return false;
+        }
+
+        if (! $this->stripe_payment_method_id) {
             return false;
         }
 

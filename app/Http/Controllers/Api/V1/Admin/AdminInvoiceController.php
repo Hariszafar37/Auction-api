@@ -2,20 +2,25 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Payment\InvoicePaymentResource;
 use App\Http\Resources\Payment\InvoiceResource;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Services\Payment\StripeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Stripe\StripeClient;
 use Symfony\Component\HttpFoundation\StreamedResponse; // used by response()->stream()
 
 class AdminInvoiceController extends Controller
 {
+    public function __construct(
+        private readonly StripeService $stripe,
+    ) {}
+
     /**
      * GET /admin/invoices
      */
@@ -63,19 +68,10 @@ class AdminInvoiceController extends Controller
             return $this->error('Paid invoices cannot be voided.', 422, 'invoice_paid');
         }
 
-        // FIX 3: cancel the deposit hold on Stripe when invoice is voided
-        if ($invoice->stripe_deposit_intent_id && $invoice->deposit_status === 'authorized') {
-            try {
-                $stripe = new StripeClient(config('services.stripe.secret'));
-                $stripe->paymentIntents->cancel($invoice->stripe_deposit_intent_id);
-                $invoice->update(['deposit_status' => 'cancelled']);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to cancel deposit PI on void', [
-                    'invoice_id' => $invoice->id,
-                    'error'      => $e->getMessage(),
-                ]);
-            }
-        }
+        // Voiding a sale releases the buyer's deposit:
+        //   - captured  → refund the money via Stripe
+        //   - authorized → cancel the (legacy) uncaptured hold
+        $this->releaseDeposit($invoice);
 
         $invoice->update([
             'status'    => 'void',
@@ -84,6 +80,77 @@ class AdminInvoiceController extends Controller
         ]);
 
         return $this->success(new InvoiceResource($invoice->fresh()), 'Invoice voided.');
+    }
+
+    /**
+     * POST /admin/invoices/{invoice}/default
+     *
+     * Buyer abandoned the purchase (no balance payment by the due date). The
+     * captured deposit is FORFEITED (kept, not refunded), the invoice is marked
+     * defaulted, and the vehicle is relisted (returned to available).
+     */
+    public function markDefaulted(Invoice $invoice): JsonResponse
+    {
+        if ($invoice->isPaid()) {
+            return $this->error('Paid invoices cannot be defaulted.', 422, 'invoice_paid');
+        }
+
+        if ($invoice->status === InvoiceStatus::Defaulted) {
+            return $this->error('Invoice is already defaulted.', 422, 'already_defaulted');
+        }
+
+        if (! $invoice->due_at || ! $invoice->due_at->isPast()) {
+            return $this->error('Invoice can only be defaulted after its due date.', 422, 'not_yet_due');
+        }
+
+        DB::transaction(function () use ($invoice) {
+            $invoice->update([
+                'status' => InvoiceStatus::Defaulted,
+                'notes'  => request()->input('notes', $invoice->notes),
+            ]);
+
+            // Deposit is forfeited — intentionally NOT refunded. Relist the vehicle.
+            $invoice->loadMissing('vehicle');
+            $invoice->vehicle?->markAsAvailable();
+        });
+
+        return $this->success(
+            new InvoiceResource($invoice->fresh()->load(['lot', 'auction', 'vehicle', 'buyer', 'payments'])),
+            'Invoice defaulted. Deposit forfeited and vehicle relisted.'
+        );
+    }
+
+    /**
+     * Release the buyer's deposit on cancellation — refund if captured, cancel if
+     * a legacy uncaptured hold. Non-fatal: a Stripe failure is logged and never
+     * blocks the void.
+     */
+    private function releaseDeposit(Invoice $invoice): void
+    {
+        if (! $invoice->stripe_deposit_intent_id) {
+            return;
+        }
+
+        try {
+            if ($invoice->deposit_status === 'captured') {
+                $this->stripe->refund($invoice->stripe_deposit_intent_id);
+                $invoice->update(['deposit_status' => 'refunded']);
+
+                InvoicePayment::where('invoice_id', $invoice->id)
+                    ->where('method', 'deposit')
+                    ->update(['status' => 'refunded']);
+
+                $invoice->recalculateBalance();
+            } elseif ($invoice->deposit_status === 'authorized') {
+                $this->stripe->cancelPaymentIntent($invoice->stripe_deposit_intent_id);
+                $invoice->update(['deposit_status' => 'cancelled']);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to release deposit on void', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
     }
 
     // ─── FIX 4: Offline payment approve / reject ─────────────────────────────────

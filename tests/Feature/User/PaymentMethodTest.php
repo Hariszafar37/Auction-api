@@ -6,11 +6,35 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Enums\AuctionStatus;
 use App\Enums\LotStatus;
+use App\Services\Payment\StripeService;
 use Database\Seeders\RolePermissionSeeder;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
+    config(['services.stripe.secret' => 'sk_test_dummy']);
 });
+
+/**
+ * Bind a StripeService test double that pretends a SetupIntent-confirmed card
+ * was attached, so the controller never touches the network.
+ */
+function fakeStripeForCardSave(?int $expYear = null): void
+{
+    $year = $expYear ?? ((int) now()->year + 3);
+
+    test()->mock(StripeService::class, function ($mock) use ($year) {
+        $mock->shouldReceive('configured')->andReturnTrue();
+        $mock->shouldReceive('ensureCustomer')->andReturn('cus_test_123');
+        $mock->shouldReceive('attachPaymentMethod')->andReturn(
+            \Stripe\PaymentMethod::constructFrom([
+                'id'              => 'pm_test_visa_123',
+                'customer'        => 'cus_test_123',
+                'card'            => ['brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => $year],
+                'billing_details' => ['name' => 'Jane Doe'],
+            ])
+        );
+    });
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,18 +58,45 @@ function makeUserWithBillingAddress(): User
     return $user;
 }
 
-// ── Payment CRUD ──────────────────────────────────────────────────────────────
+// ── SetupIntent + PaymentMethod CRUD ─────────────────────────────────────────
 
-it('authenticated user can save a valid payment method (metadata only)', function () {
+it('setup-intent endpoint returns a client secret for a user with a billing address', function () {
     $user = makeUserWithBillingAddress();
+
+    $this->mock(StripeService::class, function ($mock) {
+        $mock->shouldReceive('configured')->andReturnTrue();
+        $mock->shouldReceive('createSetupIntent')->andReturn(
+            \Stripe\SetupIntent::constructFrom([
+                'id'            => 'seti_test_123',
+                'client_secret' => 'seti_test_123_secret_abc',
+            ])
+        );
+    });
+
+    $this->actingAs($user, 'sanctum')
+        ->getJson('/api/v1/users/payment-method/setup-intent')
+        ->assertStatus(200)
+        ->assertJsonPath('data.client_secret', 'seti_test_123_secret_abc')
+        ->assertJsonPath('data.setup_intent_id', 'seti_test_123');
+});
+
+it('setup-intent endpoint errors if billing address not yet filled', function () {
+    $user = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($user, 'sanctum')
+        ->getJson('/api/v1/users/payment-method/setup-intent')
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'billing_address_required');
+});
+
+it('authenticated user can save a reusable Stripe payment method', function () {
+    $user = makeUserWithBillingAddress();
+    fakeStripeForCardSave();
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson('/api/v1/users/payment-method', [
-            'cardholder_name' => 'Jane Doe',
-            'card_number'     => '4242424242424242', // valid Luhn Visa test card
-            'expiry_month'    => 12,
-            'expiry_year'     => (int) now()->year + 3,
-            'cvv'             => '123',
+            'payment_method_id' => 'pm_test_visa_123',
+            'cardholder_name'   => 'Jane Doe',
         ]);
 
     $response->assertStatus(200)
@@ -53,6 +104,7 @@ it('authenticated user can save a valid payment method (metadata only)', functio
 
     $user->refresh()->load('billingInformation');
     expect($user->billingInformation->payment_method_added)->toBeTrue()
+        ->and($user->billingInformation->stripe_payment_method_id)->toBe('pm_test_visa_123')
         ->and($user->billingInformation->card_brand)->toBe('visa')
         ->and($user->billingInformation->card_last_four)->toBe('4242')
         ->and($user->billingInformation->cardholder_name)->toBe('Jane Doe');
@@ -62,92 +114,60 @@ it('authenticated user can save a valid payment method (metadata only)', functio
     expect($user->billingInformation->getAttribute('cvv'))->toBeNull();
 });
 
+it('saving a card flips the bid gate to valid', function () {
+    $user = makeUserWithBillingAddress();
+    expect($user->fresh()->hasValidPaymentMethod())->toBeFalse();
+
+    fakeStripeForCardSave();
+
+    $this->actingAs($user, 'sanctum')
+        ->postJson('/api/v1/users/payment-method', ['payment_method_id' => 'pm_test_visa_123'])
+        ->assertStatus(200);
+
+    expect($user->fresh()->hasValidPaymentMethod())->toBeTrue();
+});
+
 it('payment-method store errors if billing address not yet filled', function () {
     // User has NO billing_information row yet (bypass the helper intentionally)
     $user = User::factory()->create(['status' => 'active']);
 
     $response = $this->actingAs($user, 'sanctum')
         ->postJson('/api/v1/users/payment-method', [
-            'cardholder_name' => 'Jane Doe',
-            'card_number'     => '4242424242424242',
-            'expiry_month'    => 12,
-            'expiry_year'     => (int) now()->year + 3,
-            'cvv'             => '123',
+            'payment_method_id' => 'pm_test_visa_123',
         ]);
 
     $response->assertStatus(422)
              ->assertJsonPath('code', 'billing_address_required');
 });
 
-it('payment method rejects invalid Luhn card number', function () {
+it('payment method rejects a malformed payment_method_id', function () {
+    $user = makeUserWithBillingAddress();
+
+    $response = $this->actingAs($user, 'sanctum')
+        ->postJson('/api/v1/users/payment-method', [
+            'payment_method_id' => 'not-a-stripe-pm',
+        ]);
+
+    $response->assertStatus(422)
+             ->assertJsonValidationErrors(['payment_method_id']);
+});
+
+it('card metadata without a saved Stripe PM does not satisfy the bid gate', function () {
     $user = User::factory()->create(['status' => 'active']);
+    $user->billingInformation()->create([
+        'billing_address'         => '1 St',
+        'billing_country'         => 'US',
+        'billing_city'            => 'Baltimore',
+        'billing_zip_postal_code' => '21201',
+        'payment_method_added'    => true,
+        'card_brand'              => 'visa',
+        'card_last_four'          => '4242',
+        'card_expiry_month'       => 12,
+        'card_expiry_year'        => (int) now()->year + 3,
+        // no stripe_payment_method_id
+    ]);
 
-    $response = $this->actingAs($user, 'sanctum')
-        ->postJson('/api/v1/users/payment-method', [
-            'cardholder_name' => 'Jane Doe',
-            'card_number'     => '4242424242424243', // bad Luhn
-            'expiry_month'    => 12,
-            'expiry_year'     => (int) now()->year + 3,
-            'cvv'             => '123',
-        ]);
-
-    $response->assertStatus(422)
-             ->assertJsonValidationErrors(['card_number']);
-});
-
-it('payment method rejects expired card in current year', function () {
-    $user  = User::factory()->create(['status' => 'active']);
-    $now   = now();
-    $month = $now->month > 1 ? $now->month - 1 : 1;
-
-    // Skip when running in January — there's no prior month in the same year.
-    if ($now->month === 1) {
-        $this->markTestSkipped('Cannot construct a same-year past month in January.');
-    }
-
-    $response = $this->actingAs($user, 'sanctum')
-        ->postJson('/api/v1/users/payment-method', [
-            'cardholder_name' => 'Jane Doe',
-            'card_number'     => '4242424242424242',
-            'expiry_month'    => $month,
-            'expiry_year'     => $now->year,
-            'cvv'             => '123',
-        ]);
-
-    $response->assertStatus(422)
-             ->assertJsonValidationErrors(['expiry_month']);
-});
-
-it('payment method rejects prior-year expiry', function () {
-    $user = makeUserWithBillingAddress();
-
-    $response = $this->actingAs($user, 'sanctum')
-        ->postJson('/api/v1/users/payment-method', [
-            'cardholder_name' => 'Jane Doe',
-            'card_number'     => '4242424242424242',
-            'expiry_month'    => 6,
-            'expiry_year'     => (int) now()->year - 1,
-            'cvv'             => '123',
-        ]);
-
-    $response->assertStatus(422)
-             ->assertJsonValidationErrors(['expiry_year']);
-});
-
-it('payment method rejects invalid CVV length', function () {
-    $user = makeUserWithBillingAddress();
-
-    $response = $this->actingAs($user, 'sanctum')
-        ->postJson('/api/v1/users/payment-method', [
-            'cardholder_name' => 'Jane Doe',
-            'card_number'     => '4242424242424242',
-            'expiry_month'    => 12,
-            'expiry_year'     => (int) now()->year + 3,
-            'cvv'             => '12', // too short
-        ]);
-
-    $response->assertStatus(422)
-             ->assertJsonValidationErrors(['cvv']);
+    expect($user->fresh()->hasValidPaymentMethod())->toBeFalse();
 });
 
 it('payment method requires authentication', function () {

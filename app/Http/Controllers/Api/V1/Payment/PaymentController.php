@@ -88,6 +88,38 @@ class PaymentController extends Controller
     }
 
     /**
+     * POST /my/invoices/{invoice}/retry-deposit
+     *
+     * Re-attempts a failed / SCA-pending deposit charge after the buyer has
+     * updated their card. Owner-only. Returns the refreshed invoice on success.
+     */
+    public function retryDeposit(Request $request, Invoice $invoice): JsonResponse
+    {
+        if ($invoice->buyer_id !== $request->user()->id && ! $request->user()->hasRole('admin')) {
+            return $this->error('Invoice not found.', 404);
+        }
+
+        if (! in_array($invoice->deposit_status, ['failed', 'requires_action'], true)) {
+            return $this->error('No deposit retry is pending for this invoice.', 422, 'deposit_not_retryable');
+        }
+
+        $ok = app(\App\Services\Payment\InvoiceService::class)->retryDeposit($invoice);
+
+        if (! $ok) {
+            return $this->error(
+                'We still could not charge your deposit. Please check your card and try again.',
+                422,
+                'deposit_retry_failed'
+            );
+        }
+
+        return $this->success(
+            new InvoiceResource($invoice->fresh()->load(['lot', 'auction', 'vehicle', 'payments'])),
+            'Deposit charged successfully.'
+        );
+    }
+
+    /**
      * POST /my/invoices/{invoice}/pay
      * Handles offline payments (cash, check, other) only.
      * Stripe card payments use POST /my/invoices/{invoice}/payment-intent.
