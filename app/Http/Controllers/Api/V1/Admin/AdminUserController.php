@@ -5,12 +5,17 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Events\Account\AccountApproved;
 use App\Events\Account\AccountRejected;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AdminUpdateUserProfileRequest;
 use App\Http\Requests\Admin\CreateAdminUserRequest;
 use App\Http\Requests\Admin\RejectBusinessRequest;
 use App\Http\Requests\Admin\RejectDealerRequest;
 use App\Http\Requests\Admin\RejectSellerRequest;
 use App\Http\Requests\Admin\UpdateUserRoleRequest;
 use App\Http\Requests\Admin\UpdateUserStatusRequest;
+use App\Http\Requests\Profile\UpdateAccountInformationRequest;
+use App\Http\Requests\Profile\UpdateBillingInformationRequest;
+use App\Http\Requests\Profile\UpdateBusinessInformationRequest;
+use App\Http\Requests\Profile\UpdateDealerInformationRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
@@ -22,6 +27,24 @@ use Spatie\QueryBuilder\QueryBuilder;
 
 class AdminUserController extends Controller
 {
+    /**
+     * Relations eager-loaded for the admin user-detail view so the page can
+     * render every editable section (contact / billing / business / dealer)
+     * exactly like the user's own "My Profile", plus approval snapshots and
+     * uploaded documents.
+     */
+    private const DETAIL_RELATIONS = [
+        'buyerProfile',
+        'dealerProfile',
+        'businessProfile',
+        'sellerProfile',
+        'accountInformation',
+        'billingInformation',
+        'businessInformation',
+        'dealerInformation',
+        'documents',
+    ];
+
     /**
      * GET /api/v1/admin/users
      */
@@ -86,7 +109,22 @@ class AdminUserController extends Controller
     public function show(User $user): JsonResponse
     {
         return $this->success(
-            new UserResource($user->load(['buyerProfile', 'dealerProfile', 'businessProfile', 'businessInformation', 'documents']))
+            new UserResource($user->load(self::DETAIL_RELATIONS))
+        );
+    }
+
+    /**
+     * PATCH /api/v1/admin/users/{user}
+     *
+     * Admin edit of a target user's core profile fields (name / email / phones).
+     */
+    public function updateProfile(AdminUpdateUserProfileRequest $request, User $user): JsonResponse
+    {
+        $user->update($request->validated());
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'User profile updated.'
         );
     }
 
@@ -98,7 +136,7 @@ class AdminUserController extends Controller
         $user->update(['status' => $request->status]);
 
         return $this->success(
-            new UserResource($user->fresh(['buyerProfile', 'dealerProfile', 'businessProfile', 'businessInformation', 'documents'])),
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
             'User status updated.'
         );
     }
@@ -126,11 +164,97 @@ class AdminUserController extends Controller
             }
         }
 
-        $user->syncRoles([$request->role]);
+        // Seller is a higher-tier capability layered on top of buyer: a seller
+        // can always also buy, but a buyer is not a seller. So promoting to
+        // seller keeps the buyer role; every other role is exclusive.
+        if ($request->role === 'seller') {
+            $user->syncRoles(['buyer', 'seller']);
+        } else {
+            $user->syncRoles([$request->role]);
+        }
 
         return $this->success(
-            new UserResource($user->fresh(['buyerProfile', 'dealerProfile', 'businessProfile', 'businessInformation', 'documents'])),
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
             'User role updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/admin/users/{user}/account-information
+     *
+     * Admin edit of a target user's personal/contact ("shipping") details.
+     * Reuses the same validation as the user's own self-service edit.
+     */
+    public function updateAccountInformation(UpdateAccountInformationRequest $request, User $user): JsonResponse
+    {
+        $user->accountInformation()->updateOrCreate(
+            ['user_id' => $user->id],
+            $request->validated()
+        );
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'Contact information updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/admin/users/{user}/billing-information
+     */
+    public function updateBillingInformation(UpdateBillingInformationRequest $request, User $user): JsonResponse
+    {
+        $user->billingInformation()->updateOrCreate(
+            ['user_id' => $user->id],
+            $request->validated()
+        );
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'Billing information updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/admin/users/{user}/business-information
+     *
+     * Business accounts only.
+     */
+    public function updateBusinessInformation(UpdateBusinessInformationRequest $request, User $user): JsonResponse
+    {
+        if ($user->account_type !== 'business') {
+            return $this->error('Business information is only available for business accounts.', 422, 'not_a_business');
+        }
+
+        $user->businessInformation()->updateOrCreate(
+            ['user_id' => $user->id],
+            $request->validated()
+        );
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'Business information updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/admin/users/{user}/dealer-information
+     *
+     * Dealer accounts only.
+     */
+    public function updateDealerInformation(UpdateDealerInformationRequest $request, User $user): JsonResponse
+    {
+        if ($user->account_type !== 'dealer') {
+            return $this->error('Dealer information is only available for dealer accounts.', 422, 'not_a_dealer');
+        }
+
+        $user->dealerInformation()->updateOrCreate(
+            ['user_id' => $user->id],
+            $request->validated()
+        );
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'Dealer information updated.'
         );
     }
 
