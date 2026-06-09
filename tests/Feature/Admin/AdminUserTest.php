@@ -202,6 +202,148 @@ it('can demote an admin when a third admin exists', function () {
     expect($targetAdmin->fresh()->hasRole('buyer'))->toBeTrue();
 });
 
+it('promoting a user to seller keeps the buyer role (seller can also buy)', function () {
+    $admin = makeAdmin();
+    $buyer = User::factory()->create(['status' => 'active']);
+    $buyer->assignRole('buyer');
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$buyer->id}/role", ['role' => 'seller'])
+        ->assertStatus(200);
+
+    $fresh = $buyer->fresh();
+    expect($fresh->hasRole('seller'))->toBeTrue()
+        ->and($fresh->hasRole('buyer'))->toBeTrue();
+});
+
+it('accepts staff as a valid role assignment', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->assignRole('buyer');
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/role", ['role' => 'staff'])
+        ->assertStatus(200);
+
+    expect($user->fresh()->hasRole('staff'))->toBeTrue();
+});
+
+it('rejects an unknown role value', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/role", ['role' => 'superuser'])
+        ->assertStatus(422);
+});
+
+// ── Admin profile editing ──────────────────────────────────────────────────
+
+it('exposes account_intent and editable sections on user detail', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active', 'account_intent' => 'buyer']);
+    $user->assignRole('buyer');
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_intent', 'buyer')
+        ->assertJsonStructure(['data' => ['account_information', 'billing_information']]);
+});
+
+it('admin can update a user core profile (name / email)', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active', 'email' => 'old@example.com']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}", [
+            'name'  => 'Renamed User',
+            'email' => 'new@example.com',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.name', 'Renamed User')
+        ->assertJsonPath('data.email', 'new@example.com');
+
+    expect($user->fresh()->email)->toBe('new@example.com');
+});
+
+it('admin profile update rejects an email already used by another user', function () {
+    $admin = makeAdmin();
+    User::factory()->create(['email' => 'taken@example.com']);
+    $user = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}", ['email' => 'taken@example.com'])
+        ->assertStatus(422);
+});
+
+it('admin can update a user contact (account) information', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/account-information", [
+            'date_of_birth'   => '1990-01-01',
+            'address'         => '123 Main St',
+            'country'         => 'US',
+            'state'           => 'Maryland',
+            'city'            => 'Baltimore',
+            'zip_postal_code' => '21201',
+            'id_type'         => 'driver_license',
+            'id_number'       => 'D1234567',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.address', '123 Main St');
+
+    expect($user->fresh()->accountInformation->city)->toBe('Baltimore');
+});
+
+it('admin can update a user billing information', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/billing-information", [
+            'billing_address'         => '500 Market St',
+            'billing_country'         => 'US',
+            'billing_city'            => 'Annapolis',
+            'billing_zip_postal_code' => '21401',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.billing_information.billing_address', '500 Market St');
+});
+
+it('admin cannot edit business information for a non-business account', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/business-information", [
+            'legal_business_name'  => 'Acme LLC',
+            'primary_contact_name' => 'Jane Doe',
+            'contact_title'        => 'CEO',
+            'phone'                => '4105551234',
+            'address'              => '1 Way',
+            'city'                 => 'Baltimore',
+            'state'                => 'MD',
+            'zip'                  => '21201',
+            'entity_type'          => 'llc',
+            'state_of_formation'   => 'MD',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'not_a_business');
+});
+
+it('forbids a non-admin from editing a user profile', function () {
+    $buyer = User::factory()->create(['status' => 'active']);
+    $buyer->assignRole('buyer'); // blocked by the role:admin gate
+    $user = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($buyer, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}", ['name' => 'Hacked'])
+        ->assertStatus(403);
+});
+
 // ── Permission Middleware ──────────────────────────────────────────────────
 
 it('requires users.view permission to list users', function () {

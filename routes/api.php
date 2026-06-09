@@ -296,8 +296,15 @@ Route::prefix('v1')->group(function () {
                 Route::get('/',                [AdminUserController::class, 'index'])->name('index')->middleware('permission:users.view');
                 Route::post('/',               [AdminUserController::class, 'store'])->name('store')->middleware('permission:users.manage');
                 Route::get('/{user}',          [AdminUserController::class, 'show'])->name('show')->middleware('permission:users.view');
+                Route::patch('/{user}',        [AdminUserController::class, 'updateProfile'])->name('update')->middleware('permission:users.manage');
                 Route::patch('/{user}/status', [AdminUserController::class, 'updateStatus'])->name('status')->middleware('permission:users.manage');
                 Route::patch('/{user}/role',   [AdminUserController::class, 'updateRole'])->name('role')->middleware('permission:users.manage');
+
+                // Admin edit of a user's profile sections (mirrors the user's own self-service edits)
+                Route::put('/{user}/account-information',  [AdminUserController::class, 'updateAccountInformation'])->name('account-information')->middleware('permission:users.manage');
+                Route::put('/{user}/billing-information',  [AdminUserController::class, 'updateBillingInformation'])->name('billing-information')->middleware('permission:users.manage');
+                Route::put('/{user}/business-information', [AdminUserController::class, 'updateBusinessInformation'])->name('business-information')->middleware('permission:users.manage');
+                Route::put('/{user}/dealer-information',   [AdminUserController::class, 'updateDealerInformation'])->name('dealer-information')->middleware('permission:users.manage');
             });
 
             // Dealers
