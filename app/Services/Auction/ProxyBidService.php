@@ -88,8 +88,16 @@ class ProxyBidService
 
         $topCompeting = $competingProxies->first();
 
-        // Case 1 — No competition: place a bid at starting bid (or current + increment)
+        // Case 1 — No competition.
         if (! $topCompeting) {
+            // If this user is ALREADY the high bidder, there is nobody to outbid.
+            // Record/raise their max for future defense but do NOT place a bid that
+            // would raise the price against themselves (self-outbid bug).
+            if ($lot->current_winner_id === $newUser->id && ($winning = $this->currentWinningBid($lot))) {
+                return $winning;
+            }
+
+            // Take the lead at current + increment (capped at the user's own max).
             $amount = max($lot->starting_bid, ($lot->current_bid ?? 0) + BidIncrement::forAmount($lot->current_bid ?? $lot->starting_bid));
             // Don't exceed new user's own max
             $amount = min($amount, $newProxy->max_amount);
@@ -113,7 +121,31 @@ class ProxyBidService
         $amount    = min($topCompeting->max_amount, $newProxy->max_amount + $increment);
 
         $winnerUser = $topCompeting->user ?? User::find($topCompeting->user_id);
+
+        // The competing proxy holder is already the high bidder. Only re-bid if the
+        // incoming max actually forces the price up — otherwise we would place a
+        // redundant bid (and risk creeping the price toward the max needlessly).
+        if (
+            $lot->current_winner_id === $winnerUser->id
+            && ($lot->current_bid ?? 0) >= $amount
+            && ($winning = $this->currentWinningBid($lot))
+        ) {
+            return $winning;
+        }
+
         return $this->placeBidOnBehalf($lot, $winnerUser, $amount, BidType::Auto, outbidUser: $newUser);
+    }
+
+    /**
+     * The current winning bid for a lot, if one exists.
+     */
+    private function currentWinningBid(AuctionLot $lot): ?Bid
+    {
+        return Bid::query()
+            ->where('auction_lot_id', $lot->id)
+            ->where('is_winning', true)
+            ->latest('placed_at')
+            ->first();
     }
 
     /**

@@ -61,9 +61,13 @@ class PurchaseDetailResource extends JsonResource
             'pickup_notes'        => $this->pickup_notes,
             'picked_up_at'        => $this->picked_up_at?->toIso8601String(),
 
-            // Gate pass — token only exposed if the invoice is paid
+            // Gate pass — token only exposed if the invoice is paid AND the pass has
+            // not been revoked. A revoked pass must disappear from the buyer portal.
             'gate_pass_token'        => $this->when(
-                $this->relationLoaded('invoice') && $this->invoice?->isPaid() && $this->gate_pass_token,
+                $this->relationLoaded('invoice')
+                    && $this->invoice?->isPaid()
+                    && $this->gate_pass_token
+                    && $this->gate_pass_revoked_at === null,
                 $this->gate_pass_token,
             ),
             'gate_pass_generated_at' => $this->gate_pass_generated_at?->toIso8601String(),

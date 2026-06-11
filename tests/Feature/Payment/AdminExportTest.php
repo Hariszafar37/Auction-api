@@ -103,6 +103,7 @@ test('admin csv export includes correct column headers', function () {
 
     expect($content)->toContain('Invoice #')
         ->and($content)->toContain('Buyer Name')
+        ->and($content)->toContain('Auction Date')
         ->and($content)->toContain('Total')
         ->and($content)->toContain('Balance Due')
         ->and($content)->toContain('Status');
