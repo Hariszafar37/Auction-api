@@ -33,6 +33,15 @@ class GatePassController extends Controller
 
         $this->authorize('downloadGatePass', $purchase);
 
+        // A revoked gate pass is no longer valid — block the download so a buyer
+        // cannot present a stale pass at the gate.
+        if ($purchase->gate_pass_revoked_at !== null) {
+            return $this->error(
+                'This gate pass has been revoked. Please contact the auction house.',
+                403,
+                'gate_pass_revoked',
+            );
+        }
 
         // Ensure a stable token exists (lazy generation).
         $this->purchaseService->ensureGatePassToken($purchase);

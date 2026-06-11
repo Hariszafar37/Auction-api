@@ -229,12 +229,12 @@ class AdminInvoiceController extends Controller
         return response()->stream(function () use ($status) {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, [
-                'Invoice #', 'Buyer Name', 'Buyer Email', 'Lot #',
+                'Invoice #', 'Buyer Name', 'Buyer Email', 'Lot #', 'Auction Date',
                 'Sale Price', 'Total', 'Balance Due', 'Status',
                 'Due Date', 'Paid At', 'Created At',
             ]);
 
-            Invoice::with(['buyer', 'lot'])
+            Invoice::with(['buyer', 'lot', 'auction'])
                 ->when($status, fn ($q) => $q->where('status', $status))
                 ->orderBy('created_at', 'desc')
                 ->chunk(500, function ($invoices) use ($handle) {
@@ -244,6 +244,7 @@ class AdminInvoiceController extends Controller
                             $inv->buyer?->name ?? '',
                             $inv->buyer?->email ?? '',
                             $inv->lot?->lot_number ?? '',
+                            $inv->auction?->starts_at?->toDateString() ?? '',
                             $inv->sale_price,
                             number_format((float) $inv->total_amount, 2),
                             number_format((float) $inv->balance_due, 2),
