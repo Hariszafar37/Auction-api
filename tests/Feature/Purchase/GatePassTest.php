@@ -174,6 +174,56 @@ test('verify endpoint returns invalid for tampered token', function () {
          ->assertJsonPath('valid', false);
 });
 
+// ─── Revoked gate pass — buyer portal ────────────────────────────────────────
+
+test('buyer cannot download a revoked gate pass', function () {
+    $buyer    = User::factory()->create(['status' => 'active']);
+    $purchase = $this->makePurchase($buyer, [
+        'status'      => InvoiceStatus::Paid,
+        'amount_paid' => 5800,
+        'balance_due' => 0,
+        'paid_at'     => now(),
+    ], ['pickup_status' => PickupStatus::ReadyForPickup]);
+
+    $purchase->update([
+        'gate_pass_token'        => Str::uuid()->toString(),
+        'gate_pass_generated_at' => now(),
+        'gate_pass_revoked_at'   => now(),
+        'revocation_reason'      => 'Suspected fraud',
+    ]);
+
+    $this->actingAs($buyer, 'sanctum')
+         ->getJson("/api/v1/my/purchases/{$purchase->lot_id}/gate-pass")
+         ->assertForbidden()
+         ->assertJsonPath('code', 'gate_pass_revoked');
+});
+
+test('revoked gate pass token is hidden from the buyer purchase resource', function () {
+    $buyer    = User::factory()->create(['status' => 'active']);
+    $purchase = $this->makePurchase($buyer, [
+        'status'      => InvoiceStatus::Paid,
+        'amount_paid' => 5800,
+        'balance_due' => 0,
+        'paid_at'     => now(),
+    ], ['pickup_status' => PickupStatus::ReadyForPickup]);
+
+    $purchase->update([
+        'gate_pass_token'        => Str::uuid()->toString(),
+        'gate_pass_generated_at' => now(),
+        'gate_pass_revoked_at'   => now(),
+        'revocation_reason'      => 'Suspected fraud',
+    ]);
+
+    $response = $this->actingAs($buyer, 'sanctum')
+         ->getJson("/api/v1/my/purchases/{$purchase->lot_id}")
+         ->assertOk();
+
+    // Token must NOT be exposed once revoked, but the revocation metadata is.
+    expect($response->json('data.gate_pass_token'))->toBeNull();
+    $response->assertJsonPath('data.gate_pass_revoked_at', fn ($v) => $v !== null)
+             ->assertJsonPath('data.revocation_reason', 'Suspected fraud');
+});
+
 test('gate pass token is unique per lot', function () {
     $buyer1   = User::factory()->create(['status' => 'active']);
     $buyer2   = User::factory()->create(['status' => 'active']);

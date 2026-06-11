@@ -78,10 +78,13 @@ class AuctionController extends Controller
 
         $monthAuctions = $query->get();
 
-        // ── Live auctions not already in this month's range ───────────────────────
+        // ── Currently-live auctions ───────────────────────────────────────────────
+        // This is the complete set of live auctions (not scoped to the viewed month),
+        // so the homepage / calendar "Live Now" banner and count always reflect every
+        // auction currently marked live — even when they fall inside the month grid.
         $liveAuctions = Auction::query()
             ->where('status', AuctionStatus::Live)
-            ->whereNotIn('id', $monthAuctions->pluck('id'))
+            ->when($location, fn ($q) => $q->where('location', 'like', "%{$location}%"))
             ->withCount('lots')
             ->orderBy('starts_at')
             ->get();
