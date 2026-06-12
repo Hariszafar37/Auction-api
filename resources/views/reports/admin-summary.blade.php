@@ -53,8 +53,11 @@
 <div class="header">
     <div class="header-inner">
         <div>
-            <h1>Platform Summary Report</h1>
-            <p class="sub">Auto Auction — Admin Dashboard Export</p>
+            <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/colonial-logo.png'))) }}"
+                 alt="Colonial Auction Services, Inc."
+                 style="height:38px; background:#fff; padding:5px 8px; border-radius:6px; margin-bottom:8px;">
+            <h1 style="font-size:18px;">Platform Summary Report</h1>
+            <p class="sub">Colonial Auction Services, Inc. — Admin Dashboard Export</p>
         </div>
         <div class="meta">
             <p class="date">{{ now()->format('F j, Y') }}</p>

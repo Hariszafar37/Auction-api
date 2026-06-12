@@ -28,6 +28,7 @@
 <body>
   <div class="wrapper">
     <div class="header">
+      <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="160" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:10px;">
       <h1>⚠️ Invoice Overdue</h1>
       <p>Immediate payment required</p>
     </div>
@@ -110,7 +111,7 @@
       </p>
     </div>
     <div class="footer">
-      &copy; {{ date('Y') }} Colonial Auto Auction. All rights reserved.
+      &copy; {{ date('Y') }} Colonial Auction Services, Inc.. All rights reserved.
     </div>
   </div>
 </body>
