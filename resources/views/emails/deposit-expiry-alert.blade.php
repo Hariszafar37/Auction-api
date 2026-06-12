@@ -21,6 +21,7 @@
 <body>
   <div class="wrapper">
     <div class="header">
+      <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="160" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:10px;">
       <h1>⚠️ Admin Alert — Deposit Hold Expiring</h1>
     </div>
     <div class="body">
@@ -37,7 +38,7 @@
       <div class="detail-row"><span class="label">Stripe PI</span><span class="value">{{ $invoice->stripe_deposit_intent_id }}</span></div>
     </div>
     <div class="footer">
-      Colonial Auto Auction — Admin Notification &copy; {{ date('Y') }}
+      Colonial Auction Services, Inc. — Admin Notification &copy; {{ date('Y') }}
     </div>
   </div>
 </body>

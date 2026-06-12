@@ -34,6 +34,7 @@
 <body>
 <div class="wrapper">
     <div class="header">
+        <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="160" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:12px;">
         <div class="badge">Action Required</div>
         <h1>Seller Decision Needed</h1>
         <p>A bid below reserve has been submitted for your vehicle.</p>
@@ -89,7 +90,7 @@
 
     <div class="footer">
         <p>
-            This email was sent by <strong>Colonial Auto Auction</strong>.<br>
+            This email was sent by <strong>Colonial Auction Services, Inc.</strong>.<br>
             If you have questions, please contact us.
         </p>
     </div>
