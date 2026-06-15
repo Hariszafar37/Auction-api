@@ -60,7 +60,9 @@
 @endphp
 
 <div class="header">
-    <h1>Colonial Auto Auction</h1>
+    <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/colonial-logo.png'))) }}"
+         alt="Colonial Auction Services, Inc."
+         style="height:42px; background:#fff; padding:5px 8px; border-radius:6px; margin-bottom:8px;">
     <p>GATE PASS — VEHICLE RELEASE DOCUMENT</p>
 </div>
 
@@ -136,7 +138,7 @@
 </div>
 
 <div class="footer">
-    This gate pass authorizes the release of the above vehicle to the named buyer only. Valid only when payment is confirmed in our system. &copy; {{ now()->year }} Colonial Auto Auction.
+    This gate pass authorizes the release of the above vehicle to the named buyer only. Valid only when payment is confirmed in our system. &copy; {{ now()->year }} Colonial Auction Services, Inc..
 </div>
 
 </body>

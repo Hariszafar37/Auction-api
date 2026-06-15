@@ -24,7 +24,7 @@
 <body>
   <div class="wrapper">
     <div class="header">
-      <h1>Colonial Auto Auction</h1>
+      <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="170" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:10px;">
       <p>Deposit — Action Required</p>
     </div>
     <div class="body">
@@ -76,7 +76,7 @@
       </p>
     </div>
     <div class="footer">
-      Colonial Auto Auction · This is an automated message, please do not reply.
+      Colonial Auction Services, Inc. · This is an automated message, please do not reply.
     </div>
   </div>
 </body>
