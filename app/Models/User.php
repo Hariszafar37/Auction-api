@@ -75,9 +75,10 @@ class User extends Authenticatable implements MustVerifyEmail
         // regardless of the creation path (self-registration, gov invite,
         // admin-created staff, factories/seeders). Deterministic and
         // collision-free since `id` is unique. Admins may override later.
+        // Base offset 10000 keeps numbers a consistent 5-digit width.
         static::created(function (User $user): void {
             if ($user->bidder_number === null) {
-                $user->forceFill(['bidder_number' => 1000 + $user->id])->saveQuietly();
+                $user->forceFill(['bidder_number' => 10000 + $user->id])->saveQuietly();
             }
         });
     }
