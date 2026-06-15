@@ -18,6 +18,7 @@
 <body>
 <div class="container">
     <div class="header">
+        <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="160" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:12px;">
         <h1>Your Vehicle Is Ready for Pickup</h1>
     </div>
     <div class="body">
@@ -51,7 +52,7 @@
         <a href="{{ config('app.url') }}/my/purchases/{{ $purchase->lot_id }}" class="btn">View Purchase &amp; Download Gate Pass</a>
     </div>
     <div class="footer">
-        &copy; {{ now()->year }} Colonial Auto Auction. This is an automated notification.
+        &copy; {{ now()->year }} Colonial Auction Services, Inc.. This is an automated notification.
     </div>
 </div>
 </body>

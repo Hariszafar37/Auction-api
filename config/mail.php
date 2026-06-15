@@ -113,4 +113,15 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Contact Form Recipient
+    |--------------------------------------------------------------------------
+    |
+    | The inbox that public "Contact Us" form submissions are delivered to.
+    |
+    */
+
+    'contact_to' => env('MAIL_CONTACT_TO', 'colonialauctionservices@gmail.com'),
+
 ];

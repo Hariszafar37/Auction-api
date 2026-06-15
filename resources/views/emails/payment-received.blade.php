@@ -30,7 +30,7 @@
 <body>
   <div class="wrapper">
     <div class="header">
-      <h1>Colonial Auto Auction</h1>
+      <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="170" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:10px;">
       <p>Payment Confirmation</p>
     </div>
     <div class="body">
@@ -82,7 +82,7 @@
       </p>
     </div>
     <div class="footer">
-      &copy; {{ date('Y') }} Colonial Auto Auction. All rights reserved.
+      &copy; {{ date('Y') }} Colonial Auction Services, Inc.. All rights reserved.
     </div>
   </div>
 </body>
