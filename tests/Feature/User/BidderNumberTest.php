@@ -10,7 +10,7 @@ beforeEach(function () {
 it('auto-assigns a unique bidder number when a user is created', function () {
     $user = User::factory()->create();
 
-    expect($user->fresh()->bidder_number)->toBe(1000 + $user->id);
+    expect($user->fresh()->bidder_number)->toBe(10000 + $user->id);
 });
 
 it('assigns a bidder number through the registration endpoint', function () {
