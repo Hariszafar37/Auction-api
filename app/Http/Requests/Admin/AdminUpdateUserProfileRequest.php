@@ -28,6 +28,9 @@ class AdminUpdateUserProfileRequest extends FormRequest
             'email'           => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
             'primary_phone'   => ['sometimes', 'nullable', 'string', 'max:30'],
             'secondary_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            // Admin-only override of the auto-assigned bidder number. Must stay
+            // unique across users (ignoring the row being edited).
+            'bidder_number'   => ['sometimes', 'integer', 'min:1', Rule::unique('users', 'bidder_number')->ignore($userId)],
         ];
     }
 }

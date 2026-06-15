@@ -129,6 +129,7 @@ class BidController extends Controller
         }
 
         $bids = $lot->bids()
+            ->with('user:id,bidder_number')
             ->orderByDesc('placed_at')
             ->paginate($request->integer('per_page', 20));
 
