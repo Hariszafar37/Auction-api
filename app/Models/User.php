@@ -24,6 +24,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $fillable = [
         'name',
+        'bidder_number',
         'first_name',
         'middle_name',
         'last_name',
@@ -62,7 +63,24 @@ class User extends Authenticatable implements MustVerifyEmail
             'consent_marketing'        => 'boolean',
             'agree_ecomm_consent'      => 'boolean',
             'agree_accuracy_confirmed' => 'boolean',
+            'bidder_number'            => 'integer',
         ];
+    }
+
+    // ── Model events ──────────────────────────────────────────────
+
+    protected static function booted(): void
+    {
+        // Auto-assign a unique bidder number to every newly created user,
+        // regardless of the creation path (self-registration, gov invite,
+        // admin-created staff, factories/seeders). Deterministic and
+        // collision-free since `id` is unique. Admins may override later.
+        // Base offset 10000 keeps numbers a consistent 5-digit width.
+        static::created(function (User $user): void {
+            if ($user->bidder_number === null) {
+                $user->forceFill(['bidder_number' => 10000 + $user->id])->saveQuietly();
+            }
+        });
     }
 
     // ── Relationships ────────────────────────────────────────────

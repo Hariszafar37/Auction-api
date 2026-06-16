@@ -184,6 +184,12 @@ class BiddingService
             $errors['lot'] = ['This lot is not currently accepting bids.'];
         }
 
+        // Countdown has elapsed but the auctioneer hasn't closed the lot yet:
+        // bidding is frozen while the result is being finalized.
+        if ($this->isCountdownElapsed($lot)) {
+            $errors['lot'] = ['Bidding has closed for this lot. Results are being finalized.'];
+        }
+
         if ($lot->vehicle->seller_id === $user->id) {
             $errors['lot'] = ['You cannot bid on your own vehicle.'];
         }
@@ -214,6 +220,12 @@ class BiddingService
 
         if ($lot->status->isTerminal()) {
             $errors['lot'] = ['This lot is no longer accepting bids.'];
+        }
+
+        // Countdown has elapsed but the auctioneer hasn't closed the lot yet:
+        // bidding is frozen while the result is being finalized.
+        if ($this->isCountdownElapsed($lot)) {
+            $errors['lot'] = ['Bidding has closed for this lot. Results are being finalized.'];
         }
 
         if ($lot->vehicle->seller_id === $user->id) {
@@ -249,6 +261,19 @@ class BiddingService
     }
 
     // ─── Countdown helpers ──────────────────────────────────────────────────────
+
+    /**
+     * True when the lot is in countdown status but its timer has already run
+     * out. In this window the result is being finalized and no further bids
+     * are accepted, even though the auctioneer has not yet transitioned the
+     * lot to a terminal status.
+     */
+    private function isCountdownElapsed(AuctionLot $lot): bool
+    {
+        return $lot->status === LotStatus::Countdown
+            && $lot->countdown_ends_at
+            && ! $lot->countdown_ends_at->isFuture();
+    }
 
     private function extendCountdown(AuctionLot $lot): void
     {

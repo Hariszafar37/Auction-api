@@ -25,6 +25,9 @@ class BidResource extends JsonResource
 
             // Only show bidder identity to admin or the bidder themselves
             'bidder_id'  => $this->when($isMine || $isAdmin, $this->user_id),
+            // Bidder number is a non-identifying public label (e.g. "Bidder #1042").
+            // Safe to expose to all viewers — it carries no PII.
+            'bidder_number' => $this->whenLoaded('user', fn () => $this->user?->bidder_number),
             'is_mine'    => $isMine,
         ];
     }

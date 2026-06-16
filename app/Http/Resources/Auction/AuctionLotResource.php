@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Auction;
 
+use App\Models\ProxyBid;
 use App\Support\FormatsDates;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -12,7 +13,8 @@ class AuctionLotResource extends JsonResource
 
     public function toArray(Request $request): array
     {
-        $isAdmin = $request->user()?->hasRole('admin');
+        $user    = $request->user();
+        $isAdmin = $user?->hasRole('admin');
 
         return [
             'id'                => $this->id,
@@ -29,6 +31,17 @@ class AuctionLotResource extends JsonResource
             'is_winner' => $request->user() !== null && $this->current_winner_id !== null
                 ? $request->user()->id === $this->current_winner_id
                 : false,
+
+            // The authenticated user's own active proxy (max) bid on this lot,
+            // or null when none is set. Lets the UI surface "Your current max
+            // bid" prominently. Never exposes other users' proxy amounts.
+            'my_proxy_max' => $user
+                ? ProxyBid::query()
+                    ->where('auction_lot_id', $this->id)
+                    ->where('user_id', $user->id)
+                    ->where('is_active', true)
+                    ->value('max_amount')
+                : null,
 
             // Reserve: only show "met/not met" to public — never the value.
             // Returns null (not omitted) when no bids placed yet, so frontend can distinguish
