@@ -17,7 +17,16 @@ class OptionalSanctumAuth
     {
         if ($request->bearerToken()) {
             try {
-                auth('sanctum')->authenticate();
+                // Resolve the user from the bearer token on the sanctum guard.
+                // If valid, promote sanctum to the request's active guard so that
+                // $request->user() — which reads the *default* guard (web) — resolves
+                // the authenticated user across controllers and API resources.
+                // Without this, token users are seen as guests on these public
+                // routes (e.g. my_proxy_max / is_winner come back null/false, and
+                // dealer-only lots get filtered out for real dealers).
+                if (auth('sanctum')->check()) {
+                    auth()->shouldUse('sanctum');
+                }
             } catch (\Throwable) {
                 // Invalid or expired token — continue as guest
             }
