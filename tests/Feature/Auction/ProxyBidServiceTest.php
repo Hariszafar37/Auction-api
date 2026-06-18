@@ -116,3 +116,78 @@ it('lets a higher proxy take the lead just above the previous max', function () 
     expect($lot->current_winner_id)->toBe($bob->id)
         ->and($lot->current_bid)->toBe(3100);
 });
+
+// ─── Case 2 self-raise guard (Issue #2 — bidding against yourself) ─────────────
+
+it('does not place a duplicate self-bid when the current winner raises their own max above a beaten rival', function () {
+    $alice = User::factory()->create(['status' => 'active']);
+    $bob   = User::factory()->create(['status' => 'active']);
+
+    // Alice is winning at 3100 (defending against Bob's 3000 max).
+    $lot = $this->createLot(winner: $alice, overrides: [
+        'current_bid' => 3100,
+        'bid_count'   => 2,
+        'status'      => LotStatus::Open,
+    ]);
+    winningBidFor($lot, $alice, 3100);
+    ProxyBid::create([
+        'auction_lot_id' => $lot->id, 'user_id' => $alice->id, 'max_amount' => 5000, 'is_active' => true,
+    ]);
+    ProxyBid::create([
+        'auction_lot_id' => $lot->id, 'user_id' => $bob->id, 'max_amount' => 3000, 'is_active' => true,
+    ]);
+
+    $service = new ProxyBidService();
+    $service->setProxyBid($lot, $alice, 8000); // Alice just raises her ceiling
+
+    $lot->refresh();
+
+    // Price must NOT move and no extra bid recorded — Alice already leads and
+    // Bob is already beaten. Only her stored max changes.
+    expect($lot->current_bid)->toBe(3100)
+        ->and($lot->current_winner_id)->toBe($alice->id)
+        ->and($lot->bid_count)->toBe(2)
+        ->and(Bid::where('auction_lot_id', $lot->id)->count())->toBe(1);
+
+    expect(ProxyBid::where('auction_lot_id', $lot->id)->where('user_id', $alice->id)->first()->max_amount)
+        ->toBe(8000);
+});
+
+// ─── Visible progression in the bid history (Issue #5) ────────────────────────
+
+it('records a contested rung for the losing proxy so the duel is visible in history', function () {
+    $alice = User::factory()->create(['status' => 'active']);
+    $bob   = User::factory()->create(['status' => 'active']);
+
+    // Alice winning at 1000 with max 5000.
+    $lot = $this->createLot(winner: $alice, overrides: [
+        'current_bid' => 1000,
+        'bid_count'   => 1,
+        'status'      => LotStatus::Open,
+    ]);
+    winningBidFor($lot, $alice, 1000);
+    ProxyBid::create([
+        'auction_lot_id' => $lot->id, 'user_id' => $alice->id, 'max_amount' => 5000, 'is_active' => true,
+    ]);
+
+    // Bob sets a lower max of 3000 and loses.
+    (new ProxyBidService())->setProxyBid($lot, $bob, 3000);
+
+    $lot->refresh();
+
+    // History now shows: Alice 1000 (initial), Bob 3000 (contested — his max),
+    // Alice 3100 (winning). Bob's losing rung is visible but Alice's 5000 max
+    // stays private.
+    $bobRung = Bid::where('auction_lot_id', $lot->id)->where('user_id', $bob->id)->first();
+    expect($bobRung)->not->toBeNull()
+        ->and($bobRung->amount)->toBe(3000)
+        ->and($bobRung->type)->toBe(BidType::Proxy)
+        ->and($bobRung->is_winning)->toBeFalse();
+
+    $winning = Bid::where('auction_lot_id', $lot->id)->where('is_winning', true)->first();
+    expect($winning->user_id)->toBe($alice->id)
+        ->and($winning->amount)->toBe(3100);
+
+    // No Alice bid was ever recorded at her 5000 max.
+    expect(Bid::where('auction_lot_id', $lot->id)->where('amount', 5000)->exists())->toBeFalse();
+});
