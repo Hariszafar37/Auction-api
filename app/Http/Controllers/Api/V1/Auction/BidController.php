@@ -131,6 +131,7 @@ class BidController extends Controller
         $bids = $lot->bids()
             ->with('user:id,bidder_number')
             ->orderByDesc('placed_at')
+            ->orderByDesc('id') // tiebreak: keep the resolved winner above its contested rung when timestamps match
             ->paginate($request->integer('per_page', 20));
 
         return $this->success(
