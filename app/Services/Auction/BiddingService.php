@@ -194,6 +194,13 @@ class BiddingService
             $errors['lot'] = ['You cannot bid on your own vehicle.'];
         }
 
+        // A bidder must never bid against themselves. The current high bidder
+        // cannot place another standard bid — to raise their ceiling they must
+        // increase their maximum (proxy) bid instead.
+        if ($lot->current_winner_id === $user->id) {
+            $errors['amount'] = ['You are already the highest bidder. Increase your maximum (proxy) bid to raise your limit.'];
+        }
+
         $minBid = $lot->nextMinimumBid();
         if ($amount < $minBid) {
             $errors['amount'] = ["Minimum bid is \${$minBid}."];
