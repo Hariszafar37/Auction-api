@@ -110,9 +110,31 @@ class ProxyBidService
             // New user wins at topCompeting->max + 1 increment
             $increment = BidIncrement::forAmount($topCompeting->max_amount);
             $amount    = min($newProxy->max_amount, $topCompeting->max_amount + $increment);
+            $rival     = $topCompeting->user ?? User::find($topCompeting->user_id);
+
+            // Self-raise guard: the new user is ALREADY the high bidder and the
+            // resolved price would not move (they merely raised their own max
+            // above an already-beaten rival). Record the new max for future
+            // defense but do NOT place a duplicate self-bid or re-notify the
+            // rival — that is the "bidding against yourself" bug.
+            if (
+                $lot->current_winner_id === $newUser->id
+                && ($lot->current_bid ?? 0) >= $amount
+                && ($winning = $this->currentWinningBid($lot))
+            ) {
+                return $winning;
+            }
+
+            // Visible progression: record the rival being driven up to their own
+            // max (now the contested second price) so the bid history shows the
+            // duel happened, then the new user wins one increment above. Skipped
+            // when the price already sits at/above the rival's ceiling.
+            if (($lot->current_bid ?? 0) < $topCompeting->max_amount) {
+                $this->recordContestedBid($lot, $rival, $topCompeting->max_amount, BidType::Auto);
+            }
 
             // Notify the outbid user (done in BiddingService after this returns)
-            return $this->placeBidOnBehalf($lot, $newUser, $amount, BidType::Auto, outbidUser: $topCompeting->user ?? User::find($topCompeting->user_id));
+            return $this->placeBidOnBehalf($lot, $newUser, $amount, BidType::Proxy, outbidUser: $rival);
         }
 
         // Case 3 — New proxy LOSES (new max <= top competing max)
@@ -133,7 +155,36 @@ class ProxyBidService
             return $winning;
         }
 
+        // Visible progression: record the new (losing) bidder at their own max —
+        // they pushed the price up to their ceiling — then the existing winner
+        // defends one increment above. Skipped when the price already sits at/
+        // above the new bidder's ceiling (no real competition occurred).
+        if (($lot->current_bid ?? 0) < $newProxy->max_amount) {
+            $this->recordContestedBid($lot, $newUser, $newProxy->max_amount, BidType::Proxy);
+        }
+
         return $this->placeBidOnBehalf($lot, $winnerUser, $amount, BidType::Auto, outbidUser: $newUser);
+    }
+
+    /**
+     * Record a non-winning historical bid at a contested ceiling so the bid
+     * history reflects a proxy duel without exposing the eventual winner's max.
+     * Does not change the lot's current winner — it only adds a visible rung to
+     * the ladder and bumps the bid count. The defending/winning bid that follows
+     * supersedes it.
+     */
+    private function recordContestedBid(AuctionLot $lot, User $user, int $amount, BidType $type): void
+    {
+        Bid::create([
+            'auction_lot_id' => $lot->id,
+            'user_id'        => $user->id,
+            'amount'         => $amount,
+            'type'           => $type,
+            'is_winning'     => false,
+            'placed_at'      => now(),
+        ]);
+
+        $lot->update(['bid_count' => $lot->bid_count + 1]);
     }
 
     /**
