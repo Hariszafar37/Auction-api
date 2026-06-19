@@ -41,6 +41,7 @@ class RolePermissionSeeder extends Seeder
             // Payments
             'payments.view',
             'payments.manage',
+            'payments.override-release',
 
             // Reports / CMS
             'reports.view',

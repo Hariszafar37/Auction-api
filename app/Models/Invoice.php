@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\InvoiceStatus;
+use App\Enums\PaymentTransactionType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -103,6 +104,11 @@ class Invoice extends Model
             ->where('status', 'pending_verification');
     }
 
+    public function acknowledgements(): HasMany
+    {
+        return $this->hasMany(PaymentAcknowledgement::class);
+    }
+
     // ─── Scopes ──────────────────────────────────────────────────────────────────
 
     public function scopeForBuyer($query, int $userId)
@@ -137,6 +143,20 @@ class Invoice extends Model
     }
 
     /**
+     * Signed sum of payment-side ledger entries (payment +, reversal/refund −)
+     * that have actually settled (Stripe 'completed' or staff-'verified').
+     * Pending/rejected buyer submissions never count — so a buyer self-report
+     * cannot move the balance until staff verifies it.
+     */
+    public function creditedAmount(): float
+    {
+        return (float) $this->payments()
+            ->whereIn('status', ['completed', 'verified'])
+            ->whereIn('transaction_type', PaymentTransactionType::paymentSide())
+            ->sum('amount');
+    }
+
+    /**
      * Computed accessor — always reflects the live arithmetic,
      * not the stored balance_due which may lag a transaction.
      */
@@ -145,20 +165,45 @@ class Invoice extends Model
         return max(0.0, (float) $this->total_amount - (float) $this->amount_paid);
     }
 
+    /**
+     * Overpayment marker. Per business rule the invoice balance never goes
+     * negative; any excess credited over the total is surfaced here as a buyer
+     * credit / refund due for admin handling, while the invoice stays Paid at $0.
+     */
+    public function getRefundDueAttribute(): float
+    {
+        return max(0.0, (float) $this->amount_paid - (float) $this->total_amount);
+    }
+
     public function recalculateBalance(): void
     {
-        $paid = $this->completedPayments()->sum('amount');
+        // Ledger-driven: sum signed payment-side rows so reversals/refunds reduce
+        // what has been credited. Balance is clamped at $0 — overpayment surfaces
+        // via refund_due, never as a negative balance.
+        $credited = $this->creditedAmount();
 
-        $this->amount_paid = (float) $paid;
-        $this->balance_due = max(0, (float) $this->total_amount - (float) $paid);
+        $this->amount_paid = max(0.0, $credited);
+        $this->balance_due = max(0.0, (float) $this->total_amount - $credited);
 
         if ($this->balance_due <= 0) {
             $this->status  = InvoiceStatus::Paid;
             $this->paid_at = $this->paid_at ?? now();
-        } elseif ((float) $paid > 0) {
+        } elseif ($credited > 0) {
             $this->status = InvoiceStatus::Partial;
         }
 
         $this->save();
+    }
+
+    /**
+     * Release gate: a vehicle/title/gate-pass/document may only be released when
+     * the invoice is fully paid AND nothing is still awaiting staff verification.
+     * Admin override is handled separately on the PurchaseDetail.
+     */
+    public function isReleaseEligible(): bool
+    {
+        return $this->isPaid()
+            && (float) $this->balance_due <= 0
+            && ! $this->pendingOfflinePayments()->exists();
     }
 }

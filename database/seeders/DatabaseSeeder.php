@@ -29,6 +29,9 @@ class DatabaseSeeder extends Seeder
 
             // 7. Fee configurations (no dependencies)
             FeeConfigurationSeeder::class,
+
+            // 8. Payment settings singleton (no dependencies)
+            PaymentSettingsSeeder::class,
         ]);
     }
 }
