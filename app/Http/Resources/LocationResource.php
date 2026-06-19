@@ -19,6 +19,8 @@ class LocationResource extends JsonResource
             'zip_code'     => $this->zip_code,
             'phone'        => $this->phone,
             'manager_name' => $this->manager_name,
+            'latitude'     => $this->latitude !== null ? (float) $this->latitude : null,
+            'longitude'    => $this->longitude !== null ? (float) $this->longitude : null,
             'is_active'    => $this->is_active,
             'created_at'   => $this->created_at->toIso8601String(),
         ];
