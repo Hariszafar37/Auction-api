@@ -198,6 +198,36 @@ class AdminPurchaseController extends Controller
     }
 
     /**
+     * POST /admin/purchases/{lot_id}/override-release
+     * Manually override release restrictions for a lot. Requires a reason and is
+     * fully audited (who / when / why). Gated by the payments.override-release
+     * permission at the route layer.
+     */
+    public function overrideRelease(Request $request, int $lotId): JsonResponse
+    {
+        $purchase = PurchaseDetail::where('lot_id', $lotId)->first();
+
+        if (! $purchase) {
+            return $this->error('Purchase not found.', 404);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $purchase = $this->purchaseService->overrideRelease(
+            $purchase,
+            $validated['reason'],
+            $request->user()->id,
+        );
+
+        return $this->success(
+            new PurchaseDetailResource($purchase->load(['lot.vehicle', 'lot.auction', 'invoice', 'buyer', 'releaseOverriddenBy'])),
+            'Release restrictions overridden.'
+        );
+    }
+
+    /**
      * POST /admin/purchases/bulk-ready
      * Mark all awaiting_payment lots in an auction as ready_for_pickup, skipping unpaid invoices.
      */

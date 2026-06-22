@@ -16,12 +16,21 @@ class InvoicePaymentResource extends JsonResource
             'invoice_id'   => $this->invoice_id,
             'method'       => $this->method->value,
             'method_label' => $this->method->label(),
+            'transaction_type'       => $this->transaction_type->value,
+            'transaction_type_label' => $this->transaction_type->label(),
             'amount'       => (float) $this->amount,
             'reference'    => $this->when($isAdmin, $this->reference),
             'status'       => $this->status,
             'notes'         => $this->when($isAdmin, $this->notes),
             'processed_at'  => $this->processed_at?->toIso8601String(),
+            'received_at'   => $this->received_at?->toIso8601String(),
             'created_at'    => $this->created_at?->toIso8601String(),
+
+            // Who authored the entry (buyer self-report vs. staff) — admin only
+            'created_by'    => $this->when($isAdmin && $this->created_by, fn () => [
+                'id'   => $this->createdBy?->id,
+                'name' => $this->createdBy?->name,
+            ]),
 
             // FIX 3: audit trail for offline payment approvals
             'approved_by'   => $this->when($isAdmin && $this->approved_by, fn () => [

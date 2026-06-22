@@ -27,6 +27,7 @@ class Invoice extends Model
         'storage_fee_total',
         'storage_last_accrued_at',
         'total_amount',
+        'adjustments_total',
         'amount_paid',
         'balance_due',
         'status',
@@ -51,6 +52,7 @@ class Invoice extends Model
         'online_platform_fee_amount' => 'decimal:2',
         'storage_fee_total'          => 'decimal:2',
         'total_amount'             => 'decimal:2',
+        'adjustments_total'        => 'decimal:2',
         'amount_paid'              => 'decimal:2',
         'balance_due'              => 'decimal:2',
         'storage_days'             => 'integer',
@@ -157,33 +159,59 @@ class Invoice extends Model
     }
 
     /**
+     * Signed sum of verified charge-side ledger entries (late fee +, discount −).
+     * Queries the ledger; only used inside recalculateBalance(), which caches the
+     * result into the adjustments_total column for cheap reads elsewhere.
+     */
+    public function chargeAdjustments(): float
+    {
+        return (float) $this->payments()
+            ->whereIn('status', ['completed', 'verified'])
+            ->whereIn('transaction_type', PaymentTransactionType::chargeSide())
+            ->sum('amount');
+    }
+
+    /**
+     * What the buyer actually owes: the fee-engine total plus cached charge
+     * adjustments. Pure column math (no query) — never negative.
+     */
+    public function getEffectiveTotalAttribute(): float
+    {
+        return max(0.0, (float) $this->total_amount + (float) $this->adjustments_total);
+    }
+
+    /**
      * Computed accessor — always reflects the live arithmetic,
      * not the stored balance_due which may lag a transaction.
      */
     public function getRemainingBalanceAttribute(): float
     {
-        return max(0.0, (float) $this->total_amount - (float) $this->amount_paid);
+        return max(0.0, $this->effective_total - (float) $this->amount_paid);
     }
 
     /**
      * Overpayment marker. Per business rule the invoice balance never goes
-     * negative; any excess credited over the total is surfaced here as a buyer
-     * credit / refund due for admin handling, while the invoice stays Paid at $0.
+     * negative; any excess credited over the effective total is surfaced here as
+     * a buyer credit / refund due for admin handling, while the invoice stays
+     * Paid at $0.
      */
     public function getRefundDueAttribute(): float
     {
-        return max(0.0, (float) $this->amount_paid - (float) $this->total_amount);
+        return max(0.0, (float) $this->amount_paid - $this->effective_total);
     }
 
     public function recalculateBalance(): void
     {
-        // Ledger-driven: sum signed payment-side rows so reversals/refunds reduce
-        // what has been credited. Balance is clamped at $0 — overpayment surfaces
-        // via refund_due, never as a negative balance.
+        // Ledger-driven: cache verified charge adjustments, then sum signed
+        // payment-side rows so reversals/refunds reduce what has been credited.
+        // Balance is clamped at $0 — overpayment surfaces via refund_due, never
+        // as a negative balance.
+        $this->adjustments_total = $this->chargeAdjustments();
         $credited = $this->creditedAmount();
+        $total    = $this->effective_total;
 
         $this->amount_paid = max(0.0, $credited);
-        $this->balance_due = max(0.0, (float) $this->total_amount - $credited);
+        $this->balance_due = max(0.0, $total - $credited);
 
         if ($this->balance_due <= 0) {
             $this->status  = InvoiceStatus::Paid;

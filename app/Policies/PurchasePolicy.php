@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Enums\InvoiceStatus;
 use App\Models\PurchaseDetail;
 use App\Models\User;
 
@@ -15,8 +14,10 @@ class PurchasePolicy
 
     public function downloadGatePass(User $user, PurchaseDetail $purchase): bool
     {
+        // Released only when fully paid with no payment awaiting verification,
+        // or when an admin has overridden the release restriction.
         return $user->id === $purchase->buyer_id
-            && $purchase->invoice?->status === InvoiceStatus::Paid;
+            && $purchase->canRelease();
     }
 
     public function requestTransport(User $user, PurchaseDetail $purchase): bool
