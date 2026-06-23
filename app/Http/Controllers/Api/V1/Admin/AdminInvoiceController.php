@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Payment\LedgerAdjustmentRequest;
 use App\Http\Resources\Payment\InvoicePaymentResource;
 use App\Http\Resources\Payment\InvoiceResource;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Services\Payment\PaymentLedgerService;
 use App\Services\Payment\StripeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -212,6 +214,75 @@ class AdminInvoiceController extends Controller
         return $this->success(
             new InvoicePaymentResource($payment->fresh()),
             'Payment rejected.'
+        );
+    }
+
+    /**
+     * POST /admin/invoices/{invoice}/adjustments
+     * Apply a signed charge-side adjustment (positive = charge, negative =
+     * credit/discount). Recorded as an immutable ledger entry.
+     */
+    public function applyAdjustment(LedgerAdjustmentRequest $request, Invoice $invoice, PaymentLedgerService $ledger): JsonResponse
+    {
+        $entry = $ledger->applyAdjustment(
+            $invoice,
+            (float) $request->validated('amount'),
+            $request->validated('reason'),
+            $request->user(),
+        );
+
+        return $this->success(
+            new InvoiceResource($invoice->fresh()->load(['lot', 'auction', 'vehicle', 'buyer', 'payments'])),
+            'Adjustment applied.',
+            201
+        );
+    }
+
+    /**
+     * POST /admin/invoices/{invoice}/late-fee
+     * Apply the configurable late fee as a positive adjustment. Manual only —
+     * never auto-applied. Accepts an optional override amount.
+     */
+    public function applyLateFee(Request $request, Invoice $invoice, PaymentLedgerService $ledger): JsonResponse
+    {
+        $validated = $request->validate([
+            'amount' => ['sometimes', 'nullable', 'numeric', 'min:0.01'],
+        ]);
+
+        $ledger->applyLateFee($invoice, $validated['amount'] ?? null, $request->user());
+
+        return $this->success(
+            new InvoiceResource($invoice->fresh()->load(['lot', 'auction', 'vehicle', 'buyer', 'payments'])),
+            'Late fee applied.',
+            201
+        );
+    }
+
+    /**
+     * POST /admin/invoices/{invoice}/payments/{payment}/reverse
+     * Reverse a previously credited payment. Leaves the original row intact for
+     * audit and nets it out with a reversal ledger entry.
+     */
+    public function reversePayment(Request $request, Invoice $invoice, InvoicePayment $payment, PaymentLedgerService $ledger): JsonResponse
+    {
+        if ($payment->invoice_id !== $invoice->id) {
+            return $this->error('Payment does not belong to this invoice.', 422);
+        }
+
+        if (! in_array($payment->status, ['completed', 'verified'], true)) {
+            return $this->error('Only credited payments can be reversed.', 422, 'payment_not_reversible');
+        }
+
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $ledger->reversePayment($invoice, $payment, $validated['reason'] ?? null, $request->user());
+
+        return $this->success(
+            new InvoiceResource($invoice->fresh()->load(['lot', 'auction', 'vehicle', 'buyer', 'payments'])),
+            'Payment reversed.',
+            201
         );
     }
 
