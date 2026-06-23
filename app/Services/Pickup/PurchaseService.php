@@ -130,6 +130,29 @@ class PurchaseService
     }
 
     /**
+     * Admin manual release override. Records who/when/why and, if the lot is
+     * still awaiting payment, advances it to ready_for_pickup so the buyer can
+     * collect despite an unpaid/unverified balance. Fully audited.
+     */
+    public function overrideRelease(PurchaseDetail $purchase, string $reason, int $adminId): PurchaseDetail
+    {
+        $purchase->update([
+            'release_overridden_by'   => $adminId,
+            'release_overridden_at'   => now(),
+            'release_override_reason' => $reason,
+        ]);
+
+        if ($purchase->pickup_status === PickupStatus::AwaitingPayment) {
+            $purchase->update(['pickup_status' => PickupStatus::ReadyForPickup]);
+        }
+
+        // Payment/override state changed — drop any cached gate pass PDF.
+        Cache::forget("gate_pass_lot_{$purchase->lot_id}");
+
+        return $purchase->fresh();
+    }
+
+    /**
      * Queue a TransportQuoteReceived notification when admin adds a quote.
      */
     public function notifyTransportQuote(TransportRequest $request): void

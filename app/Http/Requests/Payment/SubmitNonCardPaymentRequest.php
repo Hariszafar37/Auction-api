@@ -5,7 +5,7 @@ namespace App\Http\Requests\Payment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class InitiatePaymentRequest extends FormRequest
+class SubmitNonCardPaymentRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,13 +15,14 @@ class InitiatePaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'method' => ['required', Rule::in(['stripe_card', 'wire', 'cash', 'check', 'other'])],
+            'method' => ['required', Rule::in(['wire', 'cash', 'check'])],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'notes'  => ['nullable', 'string', 'max:500'],
 
-            // Only required for check/wire (a confirmation / check number to verify against)
+            // Confirmation / check number so staff can match the funds. Required
+            // for wire and check, optional for cash (paid in person).
             'reference' => [
-                Rule::requiredIf(fn () => in_array($this->input('method'), ['check', 'wire'])),
+                Rule::requiredIf(fn () => in_array($this->input('method'), ['wire', 'check'])),
                 'nullable',
                 'string',
                 'max:200',

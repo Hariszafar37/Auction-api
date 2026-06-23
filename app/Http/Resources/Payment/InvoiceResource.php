@@ -56,6 +56,12 @@ class InvoiceResource extends JsonResource
             'balance_due'        => (float) $this->balance_due,
             'remaining_balance'  => (float) $this->remaining_balance,
 
+            // Ledger-derived extras (additive — existing fields above unchanged)
+            'adjustments_total'  => (float) $this->adjustments_total,
+            'effective_total'    => (float) $this->effective_total,
+            'refund_due'         => (float) $this->refund_due,
+            'release_eligible'   => $this->isReleaseEligible(),
+
             // Dates
             'due_at'     => $this->due_at?->toIso8601String(),
             'paid_at'    => $this->paid_at?->toIso8601String(),
