@@ -5,6 +5,7 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
 use App\Http\Controllers\Api\V1\Admin\AdminFeeController;
 use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
+use App\Http\Controllers\Api\V1\Admin\AdminPaymentSettingController;
 use App\Http\Controllers\Api\V1\Admin\AdminPurchaseController;
 use App\Http\Controllers\Api\V1\Admin\AdminTransportController;
 use App\Http\Controllers\Api\V1\Payment\InvoiceController;
@@ -233,6 +234,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/{invoice}/retry-deposit',   [PaymentController::class, 'retryDeposit'])->name('retry-deposit');
             // Offline (cash/check) payment recording — admin only
             Route::post('/{invoice}/pay',             [PaymentController::class, 'pay'])->name('pay');
+
+            // Non-card workflow (Wire / Cash / Cashier's Check) — buyer self-service
+            Route::get('/{invoice}/payment-options',  [PaymentController::class, 'paymentOptions'])->name('payment-options');
+            Route::post('/{invoice}/acknowledge',     [PaymentController::class, 'acknowledge'])->name('acknowledge');
+            Route::post('/{invoice}/submit-payment',  [PaymentController::class, 'submitNonCard'])->name('submit-payment');
         });
 
         // Vehicle notifications — requires auth
@@ -405,6 +411,7 @@ Route::prefix('v1')->group(function () {
                 Route::patch('/{lotId}/documents',           [AdminPurchaseController::class, 'updateDocuments'])->name('documents');
                 Route::post('/{lotId}/notes',                [AdminPurchaseController::class, 'addNote'])->name('notes');
                 Route::post('/{lotId}/gate-pass/revoke',     [AdminPurchaseController::class, 'revokeGatePass'])->name('gate-pass.revoke');
+                Route::post('/{lotId}/override-release',      [AdminPurchaseController::class, 'overrideRelease'])->name('override-release')->middleware('permission:payments.override-release');
             });
 
             // Transport requests management
@@ -435,6 +442,17 @@ Route::prefix('v1')->group(function () {
                 Route::patch('/{invoice}/storage',                       [PaymentController::class, 'updateStorage'])->name('storage');
                 Route::post('/{invoice}/payments/{payment}/approve',     [AdminInvoiceController::class, 'approvePayment'])->name('payments.approve');
                 Route::post('/{invoice}/payments/{payment}/reject',      [AdminInvoiceController::class, 'rejectPayment'])->name('payments.reject');
+
+                // Ledger actions — adjustments, late fee, reversals
+                Route::post('/{invoice}/adjustments',                    [AdminInvoiceController::class, 'applyAdjustment'])->name('adjustments')->middleware('permission:payments.manage');
+                Route::post('/{invoice}/late-fee',                       [AdminInvoiceController::class, 'applyLateFee'])->name('late-fee')->middleware('permission:payments.manage');
+                Route::post('/{invoice}/payments/{payment}/reverse',     [AdminInvoiceController::class, 'reversePayment'])->name('payments.reverse')->middleware('permission:payments.manage');
+            });
+
+            // Payment settings (non-card workflow configuration)
+            Route::prefix('payment-settings')->name('payment-settings.')->middleware('permission:payments.manage')->group(function () {
+                Route::get('/',  [AdminPaymentSettingController::class, 'show'])->name('show');
+                Route::put('/',  [AdminPaymentSettingController::class, 'update'])->name('update');
             });
 
             // Lot-level operations (auctioneer controls)

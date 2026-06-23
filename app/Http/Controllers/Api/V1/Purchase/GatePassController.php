@@ -67,7 +67,7 @@ class GatePassController extends Controller
             ->with(['lot.vehicle', 'buyer', 'invoice'])
             ->first();
 
-        if (! $purchase || ! $purchase->invoice?->isPaid()) {
+        if (! $purchase || ! $purchase->canRelease()) {
             return response()->json(['valid' => false], 200);
         }
 

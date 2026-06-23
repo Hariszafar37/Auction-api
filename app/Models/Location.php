@@ -15,11 +15,15 @@ class Location extends Model
         'zip_code',
         'phone',
         'manager_name',
+        'latitude',
+        'longitude',
         'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'latitude'  => 'float',
+        'longitude' => 'float',
     ];
 
     /** Force location codes to uppercase regardless of input source. */

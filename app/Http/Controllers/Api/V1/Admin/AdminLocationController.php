@@ -36,6 +36,8 @@ class AdminLocationController extends Controller
             'zip_code'     => ['nullable', 'string', 'max:20'],
             'phone'        => ['nullable', 'string', 'max:30'],
             'manager_name' => ['nullable', 'string', 'max:100'],
+            'latitude'     => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude'    => ['nullable', 'numeric', 'between:-180,180'],
             'is_active'    => ['boolean'],
         ]);
 
@@ -66,6 +68,8 @@ class AdminLocationController extends Controller
             'zip_code'     => ['nullable', 'string', 'max:20'],
             'phone'        => ['nullable', 'string', 'max:30'],
             'manager_name' => ['nullable', 'string', 'max:100'],
+            'latitude'     => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude'    => ['nullable', 'numeric', 'between:-180,180'],
             'is_active'    => ['boolean'],
         ]);
 

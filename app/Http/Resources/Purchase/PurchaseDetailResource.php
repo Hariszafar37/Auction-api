@@ -61,11 +61,11 @@ class PurchaseDetailResource extends JsonResource
             'pickup_notes'        => $this->pickup_notes,
             'picked_up_at'        => $this->picked_up_at?->toIso8601String(),
 
-            // Gate pass — token only exposed if the invoice is paid AND the pass has
-            // not been revoked. A revoked pass must disappear from the buyer portal.
+            // Gate pass — token only exposed when release is allowed (paid+verified
+            // or admin-overridden) AND the pass has not been revoked. A revoked
+            // pass must disappear from the buyer portal.
             'gate_pass_token'        => $this->when(
-                $this->relationLoaded('invoice')
-                    && $this->invoice?->isPaid()
+                $this->canRelease()
                     && $this->gate_pass_token
                     && $this->gate_pass_revoked_at === null,
                 $this->gate_pass_token,
@@ -73,6 +73,15 @@ class PurchaseDetailResource extends JsonResource
             'gate_pass_generated_at' => $this->gate_pass_generated_at?->toIso8601String(),
             'gate_pass_revoked_at'   => $this->gate_pass_revoked_at?->toIso8601String(),
             'revocation_reason'      => $this->revocation_reason,
+
+            // Release control
+            'can_release'             => $this->canRelease(),
+            'release_overridden_at'   => $this->release_overridden_at?->toIso8601String(),
+            'release_override_reason' => $this->when($isAdmin, $this->release_override_reason),
+            'release_overridden_by'   => $this->when($isAdmin && $this->release_overridden_by, fn () => [
+                'id'   => $this->releaseOverriddenBy?->id,
+                'name' => $this->releaseOverriddenBy?->name,
+            ]),
 
             // Document tracker milestones
             'title_received_at' => $this->title_received_at?->toIso8601String(),
