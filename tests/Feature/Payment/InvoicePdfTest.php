@@ -65,6 +65,11 @@ test('pdf cache key reflects the invoice updated_at so a changed due date is not
 
     expect(Cache::has($firstKey))->toBeTrue();
 
+    // Advance the clock so the update lands in a different second — otherwise a
+    // fast CI run creates and updates the invoice within the same second and the
+    // updated_at timestamp (and therefore the cache key) would not change.
+    $this->travel(5)->minutes();
+
     // The non-card deadline (and other flows) rewrite due_at, bumping updated_at.
     $invoice->update(['due_at' => now()->setDate(2026, 6, 30)]);
     $invoice->refresh();
