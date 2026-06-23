@@ -51,8 +51,11 @@ class InvoiceController extends Controller
     /**
      * GET /my/invoices/{invoice}/pdf
      *
-     * FIX 2: PDF always generated on-demand. Result cached 5 minutes for performance.
-     * Cache is invalidated by AccrueStorageFees whenever storage fees change.
+     * PDF always generated on-demand. Result cached 5 minutes for performance.
+     * The cache key includes the invoice's updated_at timestamp so any change to
+     * the invoice (e.g. a recomputed due date via the non-card deadline, storage
+     * fees, totals or status) automatically produces a fresh PDF instead of
+     * serving a stale copy that disagrees with the on-screen invoice.
      */
     public function pdf(Request $request, Invoice $invoice): Response
     {
@@ -62,7 +65,9 @@ class InvoiceController extends Controller
 
         $invoice->load(['lot', 'auction', 'vehicle', 'buyer', 'payments']);
 
-        $pdfContent = Cache::remember('invoice_pdf_' . $invoice->id, 300, function () use ($invoice) {
+        $cacheKey = 'invoice_pdf_' . $invoice->id . '_' . ($invoice->updated_at?->timestamp ?? 0);
+
+        $pdfContent = Cache::remember($cacheKey, 300, function () use ($invoice) {
             return Pdf::loadView('invoices.pdf', ['invoice' => $invoice])->output();
         });
 
