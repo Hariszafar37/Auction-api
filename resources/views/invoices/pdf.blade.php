@@ -114,6 +114,12 @@
                 <td class="amount">${{ number_format($invoice->tags_amount, 2) }}</td>
             </tr>
             @endif
+            @if((float)$invoice->online_platform_fee_amount > 0)
+            <tr>
+                <td>Online Platform Fee</td>
+                <td class="amount">${{ number_format($invoice->online_platform_fee_amount, 2) }}</td>
+            </tr>
+            @endif
             @if($invoice->storage_days > 0)
             <tr>
                 <td>Storage Fee ({{ $invoice->storage_days }} day{{ $invoice->storage_days !== 1 ? 's' : '' }} × ${{ number_format($invoice->storage_fee_amount / max($invoice->storage_days,1), 2) }}/day)</td>
