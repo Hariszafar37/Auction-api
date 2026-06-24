@@ -39,6 +39,49 @@ it('bumps the version when an admin updates the terms', function () {
         ->and(AuctionTerm::current()->version)->toBe('1.1');
 });
 
+it('rejects publishing when the submitted content is unchanged', function () {
+    $this->actingAsAdmin();
+    $current = AuctionTerm::current();
+
+    $payload = [
+        'header'                => $current->header,
+        'intro'                 => $current->intro,
+        'important_information' => $current->important_information,
+        'full_terms_content'    => $current->full_terms_content,
+        'checkbox_label'        => $current->checkbox_label,
+        'fees_url'              => $current->fees_url,
+        'payment_policy_url'    => $current->payment_policy_url,
+    ];
+
+    $this->putJson('/api/v1/admin/auction-terms', $payload)
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'no_changes');
+
+    // No duplicate version was created — still only the seeded v1.0.
+    expect(AuctionTerm::count())->toBe(1)
+        ->and(AuctionTerm::current()->version)->toBe('1.0');
+});
+
+it('publishes a new version when a single field changes', function () {
+    $this->actingAsAdmin();
+    $current = AuctionTerm::current();
+
+    $payload = [
+        'header'                => 'Enter the Auction Now',
+        'intro'                 => $current->intro,
+        'important_information' => $current->important_information,
+        'full_terms_content'    => $current->full_terms_content,
+        'checkbox_label'        => $current->checkbox_label,
+        'fees_url'              => $current->fees_url,
+        'payment_policy_url'    => $current->payment_policy_url,
+    ];
+
+    $this->putJson('/api/v1/admin/auction-terms', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.version', '1.1')
+        ->assertJsonPath('data.header', 'Enter the Auction Now');
+});
+
 it('validates url fields on update', function () {
     $this->actingAsAdmin();
 

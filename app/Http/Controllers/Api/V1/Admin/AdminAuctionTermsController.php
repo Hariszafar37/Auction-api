@@ -27,15 +27,61 @@ class AdminAuctionTermsController extends Controller
      * PUT /admin/auction-terms
      * Publish an updated document. Version auto-increments (1.0 → 1.1 → …);
      * users who accepted the prior version must re-accept before re-entering.
+     *
+     * Guard: a new version is only published when the submitted content differs
+     * from the current version — re-submitting identical content is rejected so
+     * we never mint a duplicate version (and never force a needless re-accept).
      */
     public function update(UpdateAuctionTermsRequest $request): JsonResponse
     {
-        $terms = AuctionTerm::publishUpdate($request->validated(), $request->user()->id);
+        $current   = AuctionTerm::current();
+        $validated = $request->validated();
+
+        if (! $this->hasContentChanges($current, $validated)) {
+            return $this->error(
+                'No changes detected. Please update the Terms & Conditions before publishing a new version.',
+                422,
+                'no_changes'
+            );
+        }
+
+        $terms = AuctionTerm::publishUpdate($validated, $request->user()->id);
 
         return $this->success(
             new AuctionTermResource($terms),
             'Auction Terms updated. Version is now ' . $terms->version . '.'
         );
+    }
+
+    /**
+     * Whether the submitted payload differs from the current version across any
+     * editable content/config field. A missing key means "unchanged" (falls
+     * back to the current value), so a partial payload is compared correctly.
+     */
+    private function hasContentChanges(AuctionTerm $current, array $validated): bool
+    {
+        $fields = [
+            'header', 'intro', 'important_information', 'full_terms_content',
+            'checkbox_label', 'fees_url', 'payment_policy_url',
+        ];
+
+        foreach ($fields as $field) {
+            $new = array_key_exists($field, $validated) ? $validated[$field] : $current->{$field};
+            $old = $current->{$field};
+
+            if ($field === 'important_information') {
+                if (array_values((array) $new) !== array_values((array) $old)) {
+                    return true;
+                }
+                continue;
+            }
+
+            if ($new !== $old) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
