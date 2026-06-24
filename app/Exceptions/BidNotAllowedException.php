@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
  *   - missing_payment    — no non-expired card on file
  *   - inactive_account   — status !== 'active' (excluding the suspended case)
  *   - suspended          — status === 'suspended'
+ *   - terms_not_accepted — auction Terms & Conditions not accepted (current version) for this auction
  *
  * Future reasons (reserved, not yet wired):
  *   - deposit_required   — insufficient deposit for the lot

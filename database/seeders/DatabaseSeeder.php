@@ -32,6 +32,9 @@ class DatabaseSeeder extends Seeder
 
             // 8. Payment settings singleton (no dependencies)
             PaymentSettingsSeeder::class,
+
+            // 9. Auction entry Terms & Conditions v1.0 (no dependencies)
+            AuctionTermsSeeder::class,
         ]);
     }
 }

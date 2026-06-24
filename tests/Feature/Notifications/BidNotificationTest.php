@@ -79,6 +79,8 @@ it('outbid user receives OutbidEmailNotification when outbid on a lot', function
 
     $firstBidder  = makeBidNotificationBuyer();
     $secondBidder = makeBidNotificationBuyer();
+    acceptAuctionTerms($firstBidder, $auction->id);
+    acceptAuctionTerms($secondBidder, $auction->id);
 
     // First bidder places a bid
     $this->actingAs($firstBidder, 'sanctum')
@@ -102,6 +104,7 @@ it('outbid user receives OutbidEmailNotification when outbid on a lot', function
 it('placing the first bid on a lot does not trigger outbid notification', function () {
     [$auction, $lot] = makeBidNotificationLot();
     $buyer = makeBidNotificationBuyer();
+    acceptAuctionTerms($buyer, $auction->id);
 
     $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", ['amount' => 1000])
@@ -113,6 +116,7 @@ it('placing the first bid on a lot does not trigger outbid notification', functi
 it('winning bidder does not get outbid notification for their own bid', function () {
     [$auction, $lot] = makeBidNotificationLot();
     $buyer = makeBidNotificationBuyer();
+    acceptAuctionTerms($buyer, $auction->id);
 
     // Place initial bid
     $this->actingAs($buyer, 'sanctum')
