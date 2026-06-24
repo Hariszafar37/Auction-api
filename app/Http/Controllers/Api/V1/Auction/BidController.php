@@ -12,6 +12,7 @@ use App\Models\Auction;
 use App\Models\AuctionLot;
 use App\Exceptions\BidNotAllowedException;
 use App\Services\Auction\AuctionLotService;
+use App\Services\Auction\AuctionTermsService;
 use App\Services\Auction\BiddingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,8 +21,9 @@ use Illuminate\Validation\ValidationException;
 class BidController extends Controller
 {
     public function __construct(
-        private readonly BiddingService    $biddingService,
-        private readonly AuctionLotService $auctionLotService,
+        private readonly BiddingService     $biddingService,
+        private readonly AuctionLotService  $auctionLotService,
+        private readonly AuctionTermsService $auctionTerms,
     ) {}
 
     /**
@@ -104,6 +106,12 @@ class BidController extends Controller
             throw new BidNotAllowedException(
                 reason: $user->getBidIneligibilityReason() ?? 'not_eligible',
             );
+        }
+
+        // Auction-scoped entry gate — bypass-proof Terms acceptance check.
+        if ($this->auctionTerms->requiresTerms($user)
+            && ! $this->auctionTerms->hasAcceptedCurrent($user, $auction)) {
+            throw new BidNotAllowedException(reason: 'terms_not_accepted');
         }
 
         try {

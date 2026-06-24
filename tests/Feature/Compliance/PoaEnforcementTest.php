@@ -352,6 +352,8 @@ it('pure buyer can bid without any POA — buyer flow is not blocked', function 
         ]
     );
 
+    acceptAuctionTerms($buyer, $auction->id); // isolate from the entry terms gate
+
     // Buyer has no POA — bidding must still work
     $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [

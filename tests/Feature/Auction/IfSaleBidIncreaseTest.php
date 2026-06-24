@@ -111,6 +111,7 @@ test('POST if-sale/increase-bid returns 200 with updated lot', function () {
     $this->givePaymentMethod($winner);
     $lot     = $this->createIfSaleLot($winner);
     $auction = Auction::find($lot->auction_id);
+    $this->acceptCurrentTerms($winner, $auction->id);
 
     $response = $this->actingAs($winner)->postJson(
         "/api/v1/auctions/{$auction->id}/lots/{$lot->id}/if-sale/increase-bid",
@@ -129,6 +130,7 @@ test('non-winner gets 422', function () {
     $this->givePaymentMethod($outsider);
     $lot      = $this->createIfSaleLot($winner);
     $auction  = Auction::find($lot->auction_id);
+    $this->acceptCurrentTerms($outsider, $auction->id);
 
     $response = $this->actingAs($outsider)->postJson(
         "/api/v1/auctions/{$auction->id}/lots/{$lot->id}/if-sale/increase-bid",

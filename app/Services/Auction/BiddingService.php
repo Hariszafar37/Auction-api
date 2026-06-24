@@ -21,6 +21,7 @@ class BiddingService
 {
     public function __construct(
         private readonly ProxyBidService $proxyBidService,
+        private readonly AuctionTermsService $auctionTerms,
     ) {}
 
     // ─── Manual Bid ─────────────────────────────────────────────────────────────
@@ -36,6 +37,9 @@ class BiddingService
         // Unified eligibility gate — delegates to User::canBid() so the rule
         // set stays in one place. Admins never place real bids via this path.
         $this->requireBidEligibility($user);
+
+        // Auction-scoped entry gate — bypass-proof Terms acceptance check.
+        $this->requireTermsAccepted($lot, $user);
 
         return DB::transaction(function () use ($lot, $user, $amount) {
             // Lock the lot to prevent race conditions
@@ -116,6 +120,9 @@ class BiddingService
     {
         $this->requireBidEligibility($user);
 
+        // Auction-scoped entry gate — bypass-proof Terms acceptance check.
+        $this->requireTermsAccepted($lot, $user);
+
         $this->validateProxyBid($lot, $user, $maxAmount);
 
         $previousWinnerId = $lot->current_winner_id;
@@ -169,6 +176,27 @@ class BiddingService
         throw new BidNotAllowedException(
             reason: $user->getBidIneligibilityReason() ?? 'not_eligible',
         );
+    }
+
+    /**
+     * Auction-scoped entry gate. A participant must have accepted the current
+     * Terms version for this lot's auction before any bid is accepted. This is
+     * the server-side enforcement that prevents bypassing the frontend modal
+     * by hitting the bid endpoints directly.
+     *
+     * @throws BidNotAllowedException
+     */
+    private function requireTermsAccepted(AuctionLot $lot, User $user): void
+    {
+        if (! $this->auctionTerms->requiresTerms($user)) {
+            return;
+        }
+
+        if ($this->auctionTerms->hasAcceptedCurrent($user, $lot->auction)) {
+            return;
+        }
+
+        throw new BidNotAllowedException(reason: 'terms_not_accepted');
     }
 
     // ─── Validation ─────────────────────────────────────────────────────────────
