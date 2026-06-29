@@ -12,8 +12,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class VehicleExport
 {
     private const HEADERS = [
-        'ID', 'VIN', 'Year', 'Make', 'Model', 'Trim',
-        'Body Type', 'Color', 'Mileage (mi)', 'Transmission', 'Engine', 'Fuel Type',
+        'ID', 'VIN', 'Asset #', 'Inventory #', 'Year', 'Make', 'Model', 'Trim',
+        'Body Type', 'Exterior Color', 'Interior Color', 'Seating Type',
+        'Mileage (mi)', 'Odometer Status', 'Keys', 'Fobs',
+        'Transmission', 'Engine', 'Fuel Type',
         'Condition', 'Has Title', 'Title State', 'Status',
         'Seller Name', 'Seller Email', 'Created At',
     ];
@@ -27,7 +29,7 @@ class VehicleExport
         // --- Header row ---
         $sheet->fromArray(self::HEADERS, null, 'A1');
 
-        $lastCol = 'S'; // Column 19
+        $lastCol = 'Z'; // Column 26
 
         $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
             'font' => [
@@ -51,13 +53,20 @@ class VehicleExport
                 $sheet->fromArray([
                     $v->id,
                     $v->vin,
+                    $v->asset_number ?? '',
+                    $v->inventory_number ?? '',
                     $v->year,
                     $v->make,
                     $v->model,
                     $v->trim ?? '',
                     $v->body_type,
-                    $v->color ?? '',
+                    $v->exterior_color ?? '',
+                    $v->interior_color ?? '',
+                    $v->interior_seating_type ?? '',
                     $v->mileage ?? '',
+                    $v->odometer_status ?? '',
+                    $v->number_of_keys ?? '',
+                    $v->number_of_fobs ?? '',
                     $v->transmission ?? '',
                     $v->engine ?? '',
                     $v->fuel_type ?? '',

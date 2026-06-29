@@ -132,6 +132,40 @@ it('dealer can create a vehicle', function () {
     ]);
 });
 
+it('dealer can create a vehicle with the new inventory fields and gets an auto inventory number', function () {
+    $dealer = makeDealerUser();
+
+    $payload = [
+        'vin'                   => 'JT2BF22K1W9876543',
+        'asset_number'          => 'AST-5500',
+        'year'                  => 2021,
+        'make'                  => 'Honda',
+        'model'                 => 'Accord',
+        'body_type'             => 'car',
+        'exterior_color'        => 'Blue',
+        'interior_color'        => 'Gray',
+        'interior_seating_type' => 'Cloth',
+        'odometer_status'       => 'not_actual',
+        'number_of_keys'        => 2,
+        'number_of_fobs'        => 2,
+        'condition_light'       => 'green',
+        'condition_report_url'  => 'https://reports.example.com/test',
+        'has_title'             => true,
+    ];
+
+    $response = $this->actingAs($dealer, 'sanctum')
+        ->postJson('/api/v1/my/vehicles', $payload);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('data.exterior_color', 'Blue')
+        ->assertJsonPath('data.interior_color', 'Gray')
+        ->assertJsonPath('data.interior_seating_type', 'Cloth')
+        ->assertJsonPath('data.odometer_status', 'not_actual')
+        ->assertJsonPath('data.number_of_fobs', 2);
+
+    expect($response->json('data.inventory_number'))->toStartWith('INV-');
+});
+
 it('dealer create sets seller_id from authenticated user, not payload', function () {
     $dealer = makeDealerUser();
     $other  = makeDealerUser();
