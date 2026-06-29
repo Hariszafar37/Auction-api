@@ -84,6 +84,16 @@ trait CreatesAuctionData
     }
 
     /**
+     * Record acceptance of the current auction Terms for a user so they satisfy
+     * the entry gate enforced at bid time (BiddingService::requireTermsAccepted).
+     * Any test that places a bid for a user expected to succeed must call this.
+     */
+    protected function acceptCurrentTerms(User $user, int $auctionId): void
+    {
+        acceptAuctionTerms($user, $auctionId);
+    }
+
+    /**
      * Create an IfSale lot (reserve not met, awaiting seller decision).
      * Defaults match the standard if_sale scenario.
      */

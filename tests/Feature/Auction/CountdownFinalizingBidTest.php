@@ -54,6 +54,7 @@ it('blocks a manual bid once the countdown timer has elapsed', function () {
 
     $buyer = User::factory()->create(['status' => 'active']);
     $this->givePaymentMethod($buyer);
+    $this->acceptCurrentTerms($buyer, $auction->id);
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -69,6 +70,7 @@ it('blocks a proxy bid once the countdown timer has elapsed', function () {
 
     $buyer = User::factory()->create(['status' => 'active']);
     $this->givePaymentMethod($buyer);
+    $this->acceptCurrentTerms($buyer, $auction->id);
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/proxy-bid", [
@@ -108,6 +110,7 @@ it('still accepts a bid while the countdown is genuinely live', function () {
 
     $buyer = User::factory()->create(['status' => 'active']);
     $this->givePaymentMethod($buyer);
+    $this->acceptCurrentTerms($buyer, $auction->id);
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [

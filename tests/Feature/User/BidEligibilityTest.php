@@ -98,6 +98,7 @@ it('bid succeeds for fully eligible user', function () {
     [$auction, $lot] = makeBidEligibilityLot();
     $buyer = User::factory()->create(['status' => 'active']);
     $this->givePaymentMethod($buyer);
+    acceptAuctionTerms($buyer, $auction->id);
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [

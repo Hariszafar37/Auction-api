@@ -94,6 +94,7 @@ it('individual user cannot bid on a dealer-only lot', function () {
 
     $buyer = User::factory()->create(['status' => 'active']);
     givePayment($buyer); // isolate the dealer-only check from the payment gate
+    acceptAuctionTerms($buyer, $auction->id); // isolate from the terms gate
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -111,6 +112,7 @@ it('approved dealer can bid on a dealer-only lot', function () {
 
     $dealer = makeApprovedDealer();
     givePayment($dealer);
+    acceptAuctionTerms($dealer, $auction->id);
 
     $response = $this->actingAs($dealer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -152,6 +154,7 @@ it('individual buyer can bid on a public (non-dealer-only) lot', function () {
 
     $buyer = User::factory()->create(['status' => 'active']);
     givePayment($buyer);
+    acceptAuctionTerms($buyer, $auction->id);
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/bids", [
@@ -168,6 +171,7 @@ it('individual user cannot set proxy bid on dealer-only lot', function () {
 
     $buyer = User::factory()->create(['status' => 'active']);
     givePayment($buyer); // isolate dealer-only check from payment gate
+    acceptAuctionTerms($buyer, $auction->id); // isolate from the terms gate
 
     $response = $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$auction->id}/lots/{$lot->id}/proxy-bid", [
