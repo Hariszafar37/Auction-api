@@ -138,6 +138,7 @@ Route::prefix('v1')->group(function () {
         Route::prefix('vehicles')->name('vehicles.')->group(function () {
             Route::get('/',          [VehicleController::class, 'index'])->name('index');
             Route::get('/locations', [VehicleController::class, 'locations'])->name('locations');
+            Route::get('/facets',    [VehicleController::class, 'facets'])->name('facets');
             Route::get('/{vehicle}', [VehicleController::class, 'show'])->name('show');
         });
 

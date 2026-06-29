@@ -21,12 +21,19 @@ class Vehicle extends Model implements HasMedia
     protected $fillable = [
         'seller_id',
         'vin',
+        'asset_number',
+        'inventory_number',
         'year',
         'make',
         'model',
         'trim',
-        'color',
+        'exterior_color',
+        'interior_color',
+        'interior_seating_type',
         'mileage',
+        'odometer_status',
+        'number_of_keys',
+        'number_of_fobs',
         'body_type',
         'transmission',
         'engine',
@@ -50,7 +57,28 @@ class Vehicle extends Model implements HasMedia
         'title_received_at' => 'datetime',
         'mileage'           => 'integer',
         'year'              => 'integer',
+        'number_of_keys'    => 'integer',
+        'number_of_fobs'    => 'integer',
     ];
+
+    /**
+     * Allowed odometer disclosure statuses.
+     */
+    public const ODOMETER_STATUSES = ['actual', 'not_actual', 'tmu'];
+
+    protected static function booted(): void
+    {
+        // Auto-assign a deterministic, globally-unique inventory number when one
+        // was not supplied. Using the DB-assigned id avoids any race condition
+        // and applies to every creation path (admin, dealer, factory, seeder).
+        static::created(function (Vehicle $vehicle) {
+            if (blank($vehicle->inventory_number)) {
+                $vehicle->forceFill([
+                    'inventory_number' => sprintf('INV-%05d', $vehicle->id),
+                ])->saveQuietly();
+            }
+        });
+    }
 
     // ─── Media collections ───────────────────────────────────────────────────────
 

@@ -23,8 +23,8 @@ class VehicleController extends Controller
      *
      * Filters (all optional):
      *   search           — partial match on VIN, make, model
-     *   make             — case-insensitive partial match
-     *   model            — case-insensitive partial match
+     *   make             — string (partial match) OR array of exact makes (multi-select)
+     *   model            — string (partial match) OR array of exact models (multi-select)
      *   body_type        — enum value
      *   year_min         — integer
      *   year_max         — integer
@@ -36,9 +36,9 @@ class VehicleController extends Controller
      *   transmission     — case-insensitive partial match
      *   fuel_type        — exact match
      *   drivetrain       — case-insensitive partial match
-     *   color            — case-insensitive partial match
+     *   color            — case-insensitive partial match on exterior color
      *   condition_light  — green | red | blue
-     *   sort             — newest (default) | oldest
+     *   sort             — newest (default) | oldest | year_desc | year_asc | mileage_desc | mileage_asc
      */
     public function index(Request $request): JsonResponse
     {
@@ -51,8 +51,10 @@ class VehicleController extends Controller
             ])
             // Apply filters
             ->when($request->search, fn ($q, $v) => $q->search($v))
-            ->when($request->make,   fn ($q, $v) => $q->where('make', 'like', "%{$v}%"))
-            ->when($request->model,  fn ($q, $v) => $q->where('model', 'like', "%{$v}%"))
+            // Make/Model accept either a single string (partial match) or an array
+            // of exact values for multi-select checkbox filtering.
+            ->when($request->has('make'),  fn ($q) => $this->applyInOrLike($q, 'make', $request->input('make')))
+            ->when($request->has('model'), fn ($q) => $this->applyInOrLike($q, 'model', $request->input('model')))
             ->when($request->body_type, fn ($q, $v) => $q->where('body_type', $v))
             ->when($request->year_min,  fn ($q, $v) => $q->where('year', '>=', (int) $v))
             ->when($request->year_max,  fn ($q, $v) => $q->where('year', '<=', (int) $v))
@@ -70,16 +72,12 @@ class VehicleController extends Controller
             ->when($request->transmission, fn ($q, $v) => $q->where('transmission', 'like', "%{$v}%"))
             ->when($request->fuel_type,    fn ($q, $v) => $q->where('fuel_type', $v))
             ->when($request->drivetrain,   fn ($q, $v) => $q->where('drivetrain', 'like', "%{$v}%"))
-            ->when($request->color,        fn ($q, $v) => $q->where('color', 'like', "%{$v}%"))
+            ->when($request->color,        fn ($q, $v) => $q->where('exterior_color', 'like', "%{$v}%"))
             ->when($request->condition_light && in_array($request->condition_light, ['green', 'red', 'blue']),
                 fn ($q) => $q->where('condition_light', $request->condition_light)
-            )
-            // Sort: default newest first; "oldest" reverses
-            ->when(
-                $request->sort === 'oldest',
-                fn ($q) => $q->reorder()->orderBy('created_at'),
-                fn ($q) => $q->orderByDesc('created_at'),
             );
+
+        $this->applySort($query, $request->sort);
 
         $paginated = $query->paginate($perPage)->appends($request->query());
 
@@ -94,6 +92,73 @@ class VehicleController extends Controller
                 'to'           => $paginated->lastItem(),
             ],
         );
+    }
+
+    /**
+     * Apply a make/model filter that supports both a single string (partial,
+     * case-insensitive match) and an array of exact values (multi-select).
+     */
+    private function applyInOrLike($query, string $column, mixed $value): void
+    {
+        if (is_array($value)) {
+            $values = array_values(array_filter(array_map('trim', $value), fn ($v) => $v !== ''));
+            if ($values) {
+                $query->whereIn($column, $values);
+            }
+            return;
+        }
+
+        $value = is_string($value) ? trim($value) : $value;
+        if ($value !== null && $value !== '') {
+            $query->where($column, 'like', "%{$value}%");
+        }
+    }
+
+    /**
+     * Apply a whitelisted sort order to the inventory query.
+     */
+    private function applySort($query, ?string $sort): void
+    {
+        $query->reorder();
+
+        match ($sort) {
+            'oldest'      => $query->orderBy('created_at'),
+            'year_desc'   => $query->orderByDesc('year')->orderByDesc('created_at'),
+            'year_asc'    => $query->orderBy('year')->orderByDesc('created_at'),
+            'mileage_desc'=> $query->orderByRaw('mileage IS NULL')->orderByDesc('mileage')->orderByDesc('created_at'),
+            'mileage_asc' => $query->orderByRaw('mileage IS NULL')->orderBy('mileage')->orderByDesc('created_at'),
+            default       => $query->orderByDesc('created_at'), // 'newest'
+        };
+    }
+
+    /**
+     * GET /api/v1/vehicles/facets
+     * Returns the distinct makes (each with its models) across the publicly-visible
+     * inventory, used to populate the multi-select make/model checkbox filters.
+     */
+    public function facets(Request $request): JsonResponse
+    {
+        $rows = Vehicle::publiclyVisible($request->user())
+            ->selectRaw('make, model, COUNT(*) as total')
+            ->groupBy('make', 'model')
+            ->orderBy('make')
+            ->orderBy('model')
+            ->get();
+
+        $makes = $rows
+            ->groupBy('make')
+            ->map(fn ($group, $make) => [
+                'make'   => $make,
+                'count'  => (int) $group->sum('total'),
+                'models' => $group
+                    ->map(fn ($r) => ['model' => $r->model, 'count' => (int) $r->total])
+                    ->values()
+                    ->all(),
+            ])
+            ->values()
+            ->all();
+
+        return $this->success($makes);
     }
 
     /**
