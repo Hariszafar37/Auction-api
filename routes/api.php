@@ -27,7 +27,9 @@ use App\Http\Controllers\Api\V1\Admin\AdminBidController;
 use App\Http\Controllers\Api\V1\Admin\AdminDisputeController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auction\AuctionController;
+use App\Http\Controllers\Api\V1\Auction\AuctionTermsController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
+use App\Http\Controllers\Api\V1\Admin\AdminAuctionTermsController;
 use App\Http\Controllers\Api\V1\PowerOfAttorneyController;
 use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerDashboardController;
@@ -141,6 +143,10 @@ Route::prefix('v1')->group(function () {
 
         // Platform locations — read-only, publicly visible
         Route::get('/locations', [LocationController::class, 'index'])->name('locations.index');
+
+        // Auction entry Terms & Conditions — current master document (public so
+        // the "View Full Terms" view renders pre-login).
+        Route::get('/auction-terms/current', [AuctionTermsController::class, 'current'])->name('auction-terms.current');
     });
 
     /*
@@ -207,6 +213,12 @@ Route::prefix('v1')->group(function () {
             Route::post('/{auction}/lots/{lot}/bids',                 [BidController::class, 'placeBid'])->name('place');
             Route::post('/{auction}/lots/{lot}/proxy-bid',            [BidController::class, 'setProxyBid'])->name('proxy');
             Route::post('/{auction}/lots/{lot}/if-sale/increase-bid', [BidController::class, 'increaseIfSaleBid'])->name('if-sale');
+        });
+
+        // Auction entry gate — eligibility check + Terms acceptance per auction
+        Route::prefix('auctions')->name('auctions.terms.')->group(function () {
+            Route::get('/{auction}/entry-eligibility', [AuctionTermsController::class, 'eligibility'])->name('eligibility');
+            Route::post('/{auction}/accept-terms',     [AuctionTermsController::class, 'accept'])->name('accept');
         });
 
         // My bid history
@@ -453,6 +465,15 @@ Route::prefix('v1')->group(function () {
             Route::prefix('payment-settings')->name('payment-settings.')->middleware('permission:payments.manage')->group(function () {
                 Route::get('/',  [AdminPaymentSettingController::class, 'show'])->name('show');
                 Route::put('/',  [AdminPaymentSettingController::class, 'update'])->name('update');
+            });
+
+            // Auction Terms & Conditions — master document + acceptance log.
+            // NOTE: /acceptances/export registered before /acceptances (literal paths, no conflict, kept ordered for clarity).
+            Route::prefix('auction-terms')->name('auction-terms.')->group(function () {
+                Route::get('/',                       [AdminAuctionTermsController::class, 'show'])->name('show');
+                Route::put('/',                       [AdminAuctionTermsController::class, 'update'])->name('update');
+                Route::get('/acceptances/export',     [AdminAuctionTermsController::class, 'export'])->name('acceptances.export');
+                Route::get('/acceptances',            [AdminAuctionTermsController::class, 'acceptances'])->name('acceptances');
             });
 
             // Lot-level operations (auctioneer controls)

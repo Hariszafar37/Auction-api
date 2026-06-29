@@ -27,6 +27,8 @@ it('blocks the current high bidder from placing another manual bid', function ()
         'bid_count'         => 0,
     ]);
 
+    $this->acceptCurrentTerms($buyer, $lot->auction_id);
+
     // First bid succeeds — buyer becomes the high bidder.
     $this->actingAs($buyer, 'sanctum')
         ->postJson("/api/v1/auctions/{$lot->auction_id}/lots/{$lot->id}/bids", ['amount' => 1000])
@@ -59,6 +61,9 @@ it('still lets a different bidder outbid the current high bidder manually', func
         'current_winner_id' => null,
         'bid_count'         => 0,
     ]);
+
+    $this->acceptCurrentTerms($alice, $lot->auction_id);
+    $this->acceptCurrentTerms($bob, $lot->auction_id);
 
     $this->actingAs($alice, 'sanctum')
         ->postJson("/api/v1/auctions/{$lot->auction_id}/lots/{$lot->id}/bids", ['amount' => 1000])

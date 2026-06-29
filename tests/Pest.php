@@ -30,3 +30,33 @@ pest()->use(Tests\Helpers\CreatesInvoiceData::class)
 // Shared purchase/pickup factory helpers — scoped to purchase tests.
 pest()->use(Tests\Helpers\CreatesPurchaseData::class)
     ->in('Feature/Purchase');
+
+/*
+|--------------------------------------------------------------------------
+| Global helpers
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Record acceptance of the current auction Terms for a user so they satisfy
+ * the entry gate enforced at bid time (BiddingService::requireTermsAccepted /
+ * BidController::increaseIfSaleBid). Any test placing a bid for a user expected
+ * to succeed (or to reach a later validation step) must call this first.
+ */
+function acceptAuctionTerms(\App\Models\User $user, int $auctionId): void
+{
+    $terms = \App\Models\AuctionTerm::current();
+
+    \App\Models\AuctionTermAcceptance::firstOrCreate(
+        [
+            'user_id'       => $user->id,
+            'auction_id'    => $auctionId,
+            'terms_version' => $terms->version,
+        ],
+        [
+            'auction_terms_id' => $terms->id,
+            'accepted_at'      => now(),
+            'ip_address'       => '127.0.0.1',
+        ],
+    );
+}
