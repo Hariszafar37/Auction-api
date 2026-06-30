@@ -136,6 +136,14 @@
             <td>Subtotal</td>
             <td style="text-align:right;">${{ number_format($invoice->total_amount, 2) }}</td>
         </tr>
+        {{-- Charge adjustments (late fee, storage, credit, …). Mirrors the platform's
+             fee breakdown so TOTAL DUE reconciles with BALANCE DUE. --}}
+        @if((float)$invoice->adjustments_total != 0)
+        <tr>
+            <td>{{ (float)$invoice->adjustments_total < 0 ? 'Adjustment / Credit' : 'Adjustment / Fee' }}</td>
+            <td style="text-align:right;">{{ (float)$invoice->adjustments_total < 0 ? '-' : '+' }}${{ number_format(abs($invoice->adjustments_total), 2) }}</td>
+        </tr>
+        @endif
         @if((float)$invoice->deposit_amount > 0)
         <tr>
             <td>Deposit Required</td>
@@ -150,12 +158,18 @@
         @endif
         <tr class="total-row">
             <td>TOTAL DUE</td>
-            <td style="text-align:right;">${{ number_format($invoice->total_amount, 2) }}</td>
+            <td style="text-align:right;">${{ number_format($invoice->effective_total, 2) }}</td>
         </tr>
         @if((float)$invoice->balance_due > 0)
         <tr class="balance-row">
             <td>BALANCE DUE</td>
             <td style="text-align:right;">${{ number_format($invoice->balance_due, 2) }}</td>
+        </tr>
+        @endif
+        @if((float)$invoice->refund_due > 0)
+        <tr class="balance-row">
+            <td>REFUND DUE / CREDIT</td>
+            <td style="text-align:right;">${{ number_format($invoice->refund_due, 2) }}</td>
         </tr>
         @endif
     </table>
