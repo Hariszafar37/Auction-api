@@ -227,8 +227,9 @@ class AdminInvoiceController extends Controller
         $entry = $ledger->applyAdjustment(
             $invoice,
             (float) $request->validated('amount'),
-            $request->validated('reason'),
+            (string) ($request->validated('reason') ?? ''),
             $request->user(),
+            $request->validated('fee_type'),
         );
 
         return $this->success(

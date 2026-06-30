@@ -168,7 +168,7 @@
         <thead>
             <tr>
                 <th>Date</th>
-                <th>Method</th>
+                <th>Description</th>
                 <th>Reference</th>
                 <th class="amount">Amount</th>
                 <th>Status</th>
@@ -176,9 +176,11 @@
         </thead>
         <tbody>
             @foreach($invoice->payments as $payment)
+            @php $isAdjustment = $payment->transaction_type === \App\Enums\PaymentTransactionType::Adjustment; @endphp
             <tr>
                 <td>{{ $payment->processed_at?->format('M d, Y') ?? $payment->created_at->format('M d, Y') }}</td>
-                <td>{{ $payment->method->label() }}</td>
+                {{-- Adjustments are titled by their fee type (e.g. "Late Payment Fee"); other rows keep the payment method. --}}
+                <td>{{ $isAdjustment ? $payment->adjustmentTitle() : $payment->method->label() }}</td>
                 <td>{{ $payment->reference ?? '—' }}</td>
                 <td class="amount">${{ number_format($payment->amount, 2) }}</td>
                 <td>{{ ucfirst($payment->status) }}</td>

@@ -259,6 +259,75 @@ test('non-admin cannot apply an adjustment', function () {
         ->assertForbidden();
 });
 
+// ─── Adjustment fee type (display label) ───────────────────────────────────────
+
+test('an adjustment stores the fee type and exposes it as the display label', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+    $admin   = $this->makeAdmin();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/invoices/{$invoice->id}/adjustments", [
+            'amount'   => 50,
+            'fee_type' => 'Storage Fee',
+            'reason'   => 'Held past free period',
+        ])
+        ->assertCreated();
+
+    $entry = InvoicePayment::where('invoice_id', $invoice->id)
+        ->where('transaction_type', 'adjustment')->firstOrFail();
+
+    // Internal type is still 'adjustment' (calculations/filters unaffected).
+    expect($entry->transaction_type->value)->toBe('adjustment')
+        ->and($entry->fee_type)->toBe('Storage Fee')
+        ->and($entry->notes)->toBe('Held past free period')
+        ->and($entry->adjustmentTitle())->toBe('Storage Fee')
+        ->and((float) $invoice->fresh()->effective_total)->toBe(5850.0);
+});
+
+test('applying an adjustment requires a fee type', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+    $admin   = $this->makeAdmin();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/invoices/{$invoice->id}/adjustments", [
+            'amount' => 50,
+            'reason' => 'No fee type provided',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['fee_type']);
+});
+
+test('a legacy adjustment without a fee type falls back to its reason for display', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+    $admin   = $this->makeAdmin();
+
+    // Service still accepts a null fee type (back-compat for existing callers).
+    $entry = app(PaymentLedgerService::class)
+        ->applyAdjustment($invoice, 75, 'Document handling', $admin);
+
+    expect($entry->fee_type)->toBeNull()
+        ->and($entry->adjustmentTitle())->toBe('Document handling');
+});
+
+test('the late-fee endpoint labels the adjustment as a Late Payment Fee', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+    $admin   = $this->makeAdmin();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/invoices/{$invoice->id}/late-fee")
+        ->assertCreated();
+
+    $entry = InvoicePayment::where('invoice_id', $invoice->id)
+        ->where('transaction_type', 'adjustment')->firstOrFail();
+
+    expect($entry->fee_type)->toBe('Late Payment Fee')
+        ->and($entry->adjustmentTitle())->toBe('Late Payment Fee');
+});
+
 // ─── Release override ─────────────────────────────────────────────────────────────
 
 test('admin override-release unblocks an unpaid lot, requires a reason, and is audited', function () {
