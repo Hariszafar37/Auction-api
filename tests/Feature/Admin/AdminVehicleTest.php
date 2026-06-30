@@ -139,6 +139,118 @@ it('admin can create a vehicle', function () {
     $this->assertDatabaseHas('vehicles', ['vin' => 'JT2BF22K1W0123456']);
 });
 
+it('admin can create a vehicle with the new inventory fields', function () {
+    $admin  = makeAdminForVehicle();
+    $seller = makeSeller();
+
+    $payload = [
+        'seller_id'             => $seller->id,
+        'vin'                   => 'JT2BF22K1W0123456',
+        'asset_number'          => 'AST-7788',
+        'year'                  => 2022,
+        'make'                  => 'Toyota',
+        'model'                 => 'Camry',
+        'body_type'             => 'car',
+        'exterior_color'        => 'Pearl White',
+        'interior_color'        => 'Black',
+        'interior_seating_type' => 'Leather',
+        'mileage'               => 32000,
+        'odometer_status'       => 'actual',
+        'number_of_keys'        => 2,
+        'number_of_fobs'        => 1,
+        'condition_light'       => 'green',
+        'has_title'             => true,
+    ];
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/admin/vehicles', $payload);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('data.exterior_color', 'Pearl White')
+        ->assertJsonPath('data.interior_color', 'Black')
+        ->assertJsonPath('data.interior_seating_type', 'Leather')
+        ->assertJsonPath('data.odometer_status', 'actual')
+        ->assertJsonPath('data.number_of_keys', 2)
+        ->assertJsonPath('data.number_of_fobs', 1);
+
+    // Inventory number auto-assigned when not supplied
+    expect($response->json('data.inventory_number'))->toStartWith('INV-');
+});
+
+it('admin can supply a custom inventory number on create', function () {
+    $admin  = makeAdminForVehicle();
+    $seller = makeSeller();
+
+    $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/vehicles', [
+        'seller_id'        => $seller->id,
+        'vin'              => 'JT2BF22K1W0123456',
+        'inventory_number' => 'LOT-2026-001',
+        'year'             => 2022,
+        'make'             => 'Toyota',
+        'model'            => 'Camry',
+        'body_type'        => 'car',
+        'condition_light'  => 'green',
+        'has_title'        => true,
+    ]);
+
+    $response->assertStatus(201)->assertJsonPath('data.inventory_number', 'LOT-2026-001');
+});
+
+it('admin create rejects a duplicate inventory number', function () {
+    $admin  = makeAdminForVehicle();
+    $seller = makeSeller();
+    Vehicle::factory()->create(['seller_id' => $seller->id, 'inventory_number' => 'LOT-DUP']);
+
+    $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/vehicles', [
+        'seller_id'        => $seller->id,
+        'vin'              => 'JT2BF22K1W0123456',
+        'inventory_number' => 'LOT-DUP',
+        'year'             => 2022,
+        'make'             => 'Toyota',
+        'model'            => 'Camry',
+        'body_type'        => 'car',
+        'condition_light'  => 'green',
+        'has_title'        => true,
+    ])->assertStatus(422)->assertJsonValidationErrors(['inventory_number']);
+});
+
+it('admin create rejects an invalid odometer status', function () {
+    $admin  = makeAdminForVehicle();
+    $seller = makeSeller();
+
+    $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/vehicles', [
+        'seller_id'       => $seller->id,
+        'vin'             => 'JT2BF22K1W0123456',
+        'year'            => 2022,
+        'make'            => 'Toyota',
+        'model'           => 'Camry',
+        'body_type'       => 'car',
+        'condition_light' => 'green',
+        'odometer_status' => 'bogus',
+        'has_title'       => true,
+    ])->assertStatus(422)->assertJsonValidationErrors(['odometer_status']);
+});
+
+it('admin can update the new inventory fields', function () {
+    $admin   = makeAdminForVehicle();
+    $seller  = makeSeller();
+    $vehicle = Vehicle::factory()->create(['seller_id' => $seller->id, 'status' => 'available']);
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/vehicles/{$vehicle->id}", [
+            'exterior_color'  => 'Graphite',
+            'interior_color'  => 'Tan',
+            'odometer_status' => 'tmu',
+            'number_of_keys'  => 1,
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonPath('data.exterior_color', 'Graphite')
+        ->assertJsonPath('data.interior_color', 'Tan')
+        ->assertJsonPath('data.odometer_status', 'tmu')
+        ->assertJsonPath('data.number_of_keys', 1);
+});
+
 it('create validates required fields', function () {
     $admin = makeAdminForVehicle();
 
