@@ -136,6 +136,14 @@
             <td>Subtotal</td>
             <td style="text-align:right;">${{ number_format($invoice->total_amount, 2) }}</td>
         </tr>
+        {{-- Charge adjustments (late fee, storage, credit, …). Mirrors the platform's
+             fee breakdown so TOTAL DUE reconciles with BALANCE DUE. --}}
+        @if((float)$invoice->adjustments_total != 0)
+        <tr>
+            <td>{{ (float)$invoice->adjustments_total < 0 ? 'Adjustment / Credit' : 'Adjustment / Fee' }}</td>
+            <td style="text-align:right;">{{ (float)$invoice->adjustments_total < 0 ? '-' : '+' }}${{ number_format(abs($invoice->adjustments_total), 2) }}</td>
+        </tr>
+        @endif
         @if((float)$invoice->deposit_amount > 0)
         <tr>
             <td>Deposit Required</td>
@@ -150,12 +158,18 @@
         @endif
         <tr class="total-row">
             <td>TOTAL DUE</td>
-            <td style="text-align:right;">${{ number_format($invoice->total_amount, 2) }}</td>
+            <td style="text-align:right;">${{ number_format($invoice->effective_total, 2) }}</td>
         </tr>
         @if((float)$invoice->balance_due > 0)
         <tr class="balance-row">
             <td>BALANCE DUE</td>
             <td style="text-align:right;">${{ number_format($invoice->balance_due, 2) }}</td>
+        </tr>
+        @endif
+        @if((float)$invoice->refund_due > 0)
+        <tr class="balance-row">
+            <td>REFUND DUE / CREDIT</td>
+            <td style="text-align:right;">${{ number_format($invoice->refund_due, 2) }}</td>
         </tr>
         @endif
     </table>
@@ -168,7 +182,7 @@
         <thead>
             <tr>
                 <th>Date</th>
-                <th>Method</th>
+                <th>Description</th>
                 <th>Reference</th>
                 <th class="amount">Amount</th>
                 <th>Status</th>
@@ -176,9 +190,11 @@
         </thead>
         <tbody>
             @foreach($invoice->payments as $payment)
+            @php $isAdjustment = $payment->transaction_type === \App\Enums\PaymentTransactionType::Adjustment; @endphp
             <tr>
                 <td>{{ $payment->processed_at?->format('M d, Y') ?? $payment->created_at->format('M d, Y') }}</td>
-                <td>{{ $payment->method->label() }}</td>
+                {{-- Adjustments are titled by their fee type (e.g. "Late Payment Fee"); other rows keep the payment method. --}}
+                <td>{{ $isAdjustment ? $payment->adjustmentTitle() : $payment->method->label() }}</td>
                 <td>{{ $payment->reference ?? '—' }}</td>
                 <td class="amount">${{ number_format($payment->amount, 2) }}</td>
                 <td>{{ ucfirst($payment->status) }}</td>

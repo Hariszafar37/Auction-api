@@ -17,6 +17,7 @@ class InvoicePayment extends Model
         'user_id',
         'method',
         'transaction_type',
+        'fee_type',
         'amount',
         'reference',
         'stripe_client_secret',
@@ -45,6 +46,17 @@ class InvoicePayment extends Model
     ];
 
     protected $hidden = ['stripe_client_secret'];
+
+    /**
+     * Customer-facing title for an adjustment row. Prefers the explicit fee_type
+     * (e.g. "Late Payment Fee"); falls back to the reason/notes for legacy rows
+     * created before fee_type existed, then a generic label. Display-only — the
+     * internal transaction_type stays 'adjustment'.
+     */
+    public function adjustmentTitle(): string
+    {
+        return $this->fee_type ?: ($this->notes ?: 'Adjustment');
+    }
 
     public function invoice(): BelongsTo
     {
