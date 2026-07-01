@@ -237,6 +237,7 @@ it('saves billing information', function () {
         'billing_address'         => '456 Billing Rd',
         'billing_country'         => 'US',
         'billing_city'            => 'Chicago',
+        'billing_state'           => 'IL',
         'billing_zip_postal_code' => '60601',
     ])->assertOk();
 
@@ -244,6 +245,17 @@ it('saves billing information', function () {
         'user_id'      => $user->id,
         'billing_city' => 'Chicago',
     ]);
+});
+
+it('billing requires state for US addresses', function () {
+    $user = makeActivationReadyUser();
+
+    $this->actingAs($user)->postJson('/api/v1/activation/billing-information', [
+        'billing_address'         => '456 Billing Rd',
+        'billing_country'         => 'US',
+        'billing_city'            => 'Chicago',
+        'billing_zip_postal_code' => '60601',
+    ])->assertStatus(422)->assertJsonValidationErrors('billing_state');
 });
 
 // ── Document upload ───────────────────────────────────────────────────────────

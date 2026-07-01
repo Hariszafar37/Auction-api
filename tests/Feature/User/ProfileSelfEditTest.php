@@ -103,6 +103,20 @@ it('lets an active user update their billing address', function () {
     ]);
 });
 
+it('requires state when updating a US billing address', function () {
+    $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+
+    $this->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile/billing-information', [
+            'billing_address'         => '500 Commerce Ave',
+            'billing_country'         => 'US',
+            'billing_city'            => 'Baltimore',
+            'billing_zip_postal_code' => '21202',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('billing_state');
+});
+
 it('does not wipe existing card metadata when editing the billing address', function () {
     $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
     $this->givePaymentMethod($user);
@@ -112,6 +126,7 @@ it('does not wipe existing card metadata when editing the billing address', func
             'billing_address'         => '999 New St',
             'billing_country'         => 'US',
             'billing_city'            => 'Rockville',
+            'billing_state'           => 'MD',
             'billing_zip_postal_code' => '20850',
         ])
         ->assertOk();
