@@ -267,8 +267,13 @@ class BiddingService
             $errors['lot'] = ['You cannot bid on your own vehicle.'];
         }
 
-        $minBid = $lot->nextMinimumBid();
-        if ($maxAmount < $minBid) {
+        // A maximum at or below the current live bid can never win, so reject it
+        // with a clear message before falling back to the increment-based minimum.
+        $minBid     = $lot->nextMinimumBid();
+        $currentBid = $lot->current_bid ?? 0;
+        if ($currentBid > 0 && $maxAmount <= $currentBid) {
+            $errors['max_amount'] = ['Your maximum bid must be greater than the current bid.'];
+        } elseif ($maxAmount < $minBid) {
             $errors['max_amount'] = ["Max bid must be at least \${$minBid}."];
         }
 
