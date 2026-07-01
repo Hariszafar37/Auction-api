@@ -307,6 +307,7 @@ it('admin can update a user billing information', function () {
             'billing_address'         => '500 Market St',
             'billing_country'         => 'US',
             'billing_city'            => 'Annapolis',
+            'billing_state'           => 'MD',
             'billing_zip_postal_code' => '21401',
         ])
         ->assertStatus(200)
