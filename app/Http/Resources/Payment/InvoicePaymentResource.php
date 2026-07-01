@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Payment;
 
+use App\Enums\PaymentTransactionType;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,6 +12,8 @@ class InvoicePaymentResource extends JsonResource
     {
         $isAdmin = $request->user()?->hasRole('admin');
 
+        $isAdjustment = $this->transaction_type === PaymentTransactionType::Adjustment;
+
         return [
             'id'           => $this->id,
             'invoice_id'   => $this->invoice_id,
@@ -18,6 +21,14 @@ class InvoicePaymentResource extends JsonResource
             'method_label' => $this->method->label(),
             'transaction_type'       => $this->transaction_type->value,
             'transaction_type_label' => $this->transaction_type->label(),
+
+            // Customer-facing fee type for adjustments (e.g. "Late Payment Fee").
+            // display_label is the title to render for adjustment rows — it falls
+            // back to the reason/notes for legacy rows, then a generic label.
+            // Null for non-adjustment rows (the client keeps its existing title).
+            'fee_type'      => $this->when($isAdjustment, $this->fee_type),
+            'display_label' => $isAdjustment ? $this->adjustmentTitle() : null,
+
             'amount'       => (float) $this->amount,
             'reference'    => $this->when($isAdmin, $this->reference),
             'status'       => $this->status,

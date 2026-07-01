@@ -24,14 +24,15 @@ class PaymentLedgerService
      * discount). Recorded as an immutable ledger row and reflected in the
      * invoice's effective total.
      */
-    public function applyAdjustment(Invoice $invoice, float $amount, string $reason, User $admin): InvoicePayment
+    public function applyAdjustment(Invoice $invoice, float $amount, string $reason, User $admin, ?string $feeType = null): InvoicePayment
     {
-        return DB::transaction(function () use ($invoice, $amount, $reason, $admin) {
+        return DB::transaction(function () use ($invoice, $amount, $reason, $admin, $feeType) {
             $entry = InvoicePayment::create([
                 'invoice_id'       => $invoice->id,
                 'user_id'          => $invoice->buyer_id,
                 'method'           => PaymentMethod::Other,
                 'transaction_type' => PaymentTransactionType::Adjustment,
+                'fee_type'         => $feeType,
                 'amount'           => $amount,
                 'status'           => 'verified',
                 'notes'            => $reason,
@@ -57,7 +58,7 @@ class PaymentLedgerService
     {
         $fee = $amount ?? (float) PaymentSetting::current()->late_fee_amount;
 
-        return $this->applyAdjustment($invoice, abs($fee), 'Late payment fee', $admin);
+        return $this->applyAdjustment($invoice, abs($fee), 'Late payment fee', $admin, 'Late Payment Fee');
     }
 
     /**
