@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Services\Payment\PaymentLedgerService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Facades\Cache;
 
@@ -48,6 +49,38 @@ test('pdf template renders the live due date', function () {
     $html = view('invoices.pdf', ['invoice' => $invoice])->render();
 
     expect($html)->toContain('Jun 30, 2026');
+});
+
+// ─── Adjustment line in the totals box ──────────────────────────────────────────
+
+test('pdf totals show the adjustment and TOTAL DUE reflects the effective total', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer, ['total_amount' => 1179, 'balance_due' => 1179]);
+    $admin   = $this->makeAdmin();
+
+    app(PaymentLedgerService::class)->applyAdjustment($invoice, 50, 'Applied after deadline', $admin, 'Late Payment Fee');
+
+    $invoice->refresh()->load(['lot', 'auction', 'vehicle', 'buyer', 'payments']);
+
+    $html = view('invoices.pdf', ['invoice' => $invoice])->render();
+
+    // The adjustment is itemised in the totals box (not just in payment history)…
+    expect($html)->toContain('Adjustment / Fee')
+        ->and($html)->toContain('+$50.00')
+        // …and TOTAL DUE now equals the effective total ($1,229), reconciling with BALANCE DUE.
+        ->and($html)->toContain('$1,229.00');
+});
+
+test('pdf totals omit the adjustment line when there are none', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    $invoice->load(['lot', 'auction', 'vehicle', 'buyer', 'payments']);
+
+    $html = view('invoices.pdf', ['invoice' => $invoice])->render();
+
+    expect($html)->not->toContain('Adjustment / Fee')
+        ->and($html)->not->toContain('Adjustment / Credit');
 });
 
 // ─── PDF cache freshness (endpoint) ──────────────────────────────────────────────
