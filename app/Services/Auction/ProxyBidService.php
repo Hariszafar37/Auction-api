@@ -61,13 +61,26 @@ class ProxyBidService
                 return; // no proxy to trigger
             }
 
-            $increment    = BidIncrement::forAmount($lot->current_bid ?? $lot->starting_bid);
-            $neededAmount = ($lot->current_bid ?? $lot->starting_bid) + $increment;
+            $currentBid   = $lot->current_bid ?? $lot->starting_bid;
+            $increment    = BidIncrement::forAmount($currentBid);
+            $neededAmount = $currentBid + $increment;
 
             if ($topProxy->max_amount >= $neededAmount) {
-                // Auto-bid on behalf of this proxy holder
+                // Auto-bid on behalf of this proxy holder, one full increment up.
                 $bidAmount = min($topProxy->max_amount, $neededAmount);
                 $this->placeBidOnBehalf($lot, $topProxy->user, $bidAmount, BidType::Auto);
+            } elseif (
+                $topProxy->max_amount >= $currentBid
+                && $lot->current_winner_id !== $topProxy->user_id
+            ) {
+                // The manual bid tied (or came within less than a full increment
+                // of) the proxy holder's ceiling. That proxy was registered
+                // BEFORE this manual bid, so under first-max-wins it retains
+                // priority and reclaims the lead at its maximum — an exact
+                // tie-reclaim when equal, a partial increment when the remaining
+                // headroom is under one step. Without this, a later manual bid
+                // equal to an earlier proxy max would incorrectly lead.
+                $this->placeBidOnBehalf($lot, $topProxy->user, $topProxy->max_amount, BidType::Auto);
             }
         });
     }
