@@ -168,6 +168,7 @@ it('saves dealer information for dealer account', function () {
         'dealer_address'           => '789 Lot Ave',
         'dealer_country'           => 'US',
         'dealer_city'              => 'Houston',
+        'dealer_state'             => 'TX',
         'dealer_zip_code'          => '77001',
         'dealer_classification'    => 'maryland_retail',
         // Retail dealers must supply a salesman license number
@@ -196,6 +197,7 @@ it('dealer_type is derived as wholesale when classification is maryland_wholesal
         'dealer_address'         => '1 Wholesale Rd',
         'dealer_country'         => 'US',
         'dealer_city'            => 'Baltimore',
+        'dealer_state'           => 'MD',
         'dealer_zip_code'        => '21201',
         'dealer_classification'  => 'maryland_wholesale',
         // Wholesale: salesman_license_number not required
@@ -221,6 +223,7 @@ it('rejects dealer information for non-dealer account', function () {
         'dealer_address'          => '1 Corp St',
         'dealer_country'          => 'US',
         'dealer_city'             => 'NYC',
+        'dealer_state'            => 'NY',
         'dealer_zip_code'         => '10001',
         // Use wholesale to avoid salesman_license_number requirement
         'dealer_classification'   => 'maryland_wholesale',
@@ -648,20 +651,16 @@ it('billing accepts non-US country and free-text state', function () {
     ]);
 });
 
-it('billing accepts null billing_state', function () {
+it('billing requires state for non-US addresses too', function () {
     $user = makeActivationReadyUser();
 
+    // State/province is now mandatory for every billing address, regardless of country.
     $this->actingAs($user)->postJson('/api/v1/activation/billing-information', [
         'billing_address'         => '1 High Street',
         'billing_country'         => 'GB',
         'billing_city'            => 'London',
         'billing_zip_postal_code' => 'SW1A 1AA',
-    ])->assertOk();
-
-    $this->assertDatabaseHas('user_billing_information', [
-        'user_id'         => $user->id,
-        'billing_country' => 'GB',
-    ]);
+    ])->assertStatus(422)->assertJsonValidationErrors('billing_state');
 });
 
 // ── Account information accepts non-US address ──────────────────────────────

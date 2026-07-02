@@ -229,6 +229,7 @@ it('blocks a non-dealer account from editing dealer information', function () {
             'dealer_address'          => '2 Auto Plaza',
             'dealer_country'          => 'US',
             'dealer_city'             => 'Baltimore',
+            'dealer_state'            => 'MD',
             'dealer_zip_code'         => '21224',
         ])
         ->assertStatus(422)
@@ -249,6 +250,7 @@ it('rejects a dealer license that is already expired', function () {
             'dealer_address'          => '2 Auto Plaza',
             'dealer_country'          => 'US',
             'dealer_city'             => 'Baltimore',
+            'dealer_state'            => 'MD',
             'dealer_zip_code'         => '21224',
         ])
         ->assertStatus(422)
