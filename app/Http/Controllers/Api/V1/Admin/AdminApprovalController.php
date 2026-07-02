@@ -102,7 +102,7 @@ class AdminApprovalController extends Controller
         if ($type && ! in_array($type, [...ApprovalService::TYPES, 'all'], true)) {
             $type = null;
         }
-        if ($status && ! in_array($status, ['pending', 'approved', 'rejected', 'all'], true)) {
+        if ($status && ! in_array($status, ['pending', 'approved', 'rejected', 'revision_requested', 'all'], true)) {
             $status = null;
         }
 
