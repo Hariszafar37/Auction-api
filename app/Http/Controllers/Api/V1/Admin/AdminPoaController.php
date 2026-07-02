@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Events\Account\POAApproved;
 use App\Events\Account\POARejected;
+use App\Events\Account\POARevisionRequested;
 use App\Http\Controllers\Controller;
 use App\Models\PowerOfAttorney;
 use App\Models\User;
@@ -88,6 +89,35 @@ class AdminPoaController extends Controller
         event(new POARejected($user, $poa->fresh(), $request->admin_notes));
 
         return $this->success($this->formatPoa($poa->fresh()), 'POA rejected.');
+    }
+
+    /**
+     * POST /api/v1/admin/users/{user}/poa/{poa}/request-revision
+     *
+     * Flag a POA for revision — recoverable, unlike a hard reject. The user is
+     * expected to submit a corrected document. Mirrors the user_documents
+     * `needs_resubmission` loop.
+     */
+    public function requestRevision(User $user, PowerOfAttorney $poa, Request $request, ApprovalService $approvals): JsonResponse
+    {
+        $request->validate([
+            'admin_notes' => ['required', 'string'],
+        ]);
+
+        $previousStatus = $poa->status;
+
+        $poa->update([
+            'status'      => 'revision_requested',
+            'admin_notes' => $request->admin_notes,
+            'reviewed_by' => auth()->id(),
+            'reviewed_at' => now(),
+        ]);
+
+        $approvals->record(ApprovalService::TYPE_POA, $poa->id, $user->id, 'revision_requested', $previousStatus, 'revision_requested', $request->admin_notes, auth()->id());
+
+        event(new POARevisionRequested($user, $poa->fresh(), $request->admin_notes));
+
+        return $this->success($this->formatPoa($poa->fresh()), 'POA revision requested.');
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────

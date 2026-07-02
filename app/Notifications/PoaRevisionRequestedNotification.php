@@ -9,9 +9,13 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Sent to a seller when their Power of Attorney document is rejected by an admin.
+ * Sent to a seller when an admin requests a revision to their Power of Attorney.
+ *
+ * Distinct from PoaRejectedNotification: a revision request signals the document
+ * is recoverable and the user is expected to re-submit a corrected version,
+ * mirroring the user_documents `needs_resubmission` loop.
  */
-class PoaRejectedNotification extends Notification implements ShouldQueue
+class PoaRevisionRequestedNotification extends Notification implements ShouldQueue
 {
     use Queueable, HasBroadcastPayload;
 
@@ -29,17 +33,17 @@ class PoaRejectedNotification extends Notification implements ShouldQueue
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
 
         $mail = (new MailMessage)
-            ->subject('Action Required: Your Power of Attorney Was Not Approved')
+            ->subject('Action Required: Please Revise Your Power of Attorney')
             ->greeting('Hello ' . ($notifiable->first_name ?? $notifiable->name) . ',')
-            ->line('Your Power of Attorney (POA) document has been reviewed and could not be approved.');
+            ->line('Your Power of Attorney (POA) document has been reviewed and a revision is required before it can be approved.');
 
         if ($this->adminNotes) {
-            $mail->line('**Admin Notes:** ' . $this->adminNotes);
+            $mail->line('**What needs to change:** ' . $this->adminNotes);
         }
 
         return $mail
-            ->line('Please re-upload a corrected POA document to proceed with vehicle submissions.')
-            ->action('Re-upload POA', "{$frontendUrl}/poa")
+            ->line('Please submit a revised POA document to proceed with vehicle submissions.')
+            ->action('Revise POA', "{$frontendUrl}/poa")
             ->line('Contact our support team if you need assistance.');
     }
 
@@ -48,9 +52,9 @@ class PoaRejectedNotification extends Notification implements ShouldQueue
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
 
         return [
-            'type'       => 'poa_rejected',
-            'title'      => 'Power of Attorney not approved',
-            'message'    => 'Your POA could not be approved — please re-upload a corrected document.',
+            'type'       => 'poa_revision_requested',
+            'title'      => 'Power of Attorney revision requested',
+            'message'    => 'A revision to your POA has been requested — please submit a corrected document.',
             'action_url' => "{$frontendUrl}/poa",
             'meta'       => ['admin_notes' => $this->adminNotes],
         ];

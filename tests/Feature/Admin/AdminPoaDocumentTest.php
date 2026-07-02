@@ -205,6 +205,93 @@ it('admin poa rejection requires admin_notes', function () {
         ->assertJsonValidationErrors(['admin_notes']);
 });
 
+it('admin can request a revision on a POA with admin notes', function () {
+    $admin = makePoaAdmin();
+    $user  = makePoaUser();
+
+    $poa = PowerOfAttorney::create([
+        'user_id'   => $user->id,
+        'type'      => 'upload',
+        'status'    => 'signed',
+        'file_path' => 'poa/test.pdf',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/users/{$user->id}/poa/{$poa->id}/request-revision", [
+            'admin_notes' => 'Please use the latest POA template.',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'revision_requested');
+
+    $this->assertDatabaseHas('power_of_attorney', [
+        'id'          => $poa->id,
+        'status'      => 'revision_requested',
+        'admin_notes' => 'Please use the latest POA template.',
+        'reviewed_by' => $admin->id,
+    ]);
+
+    $this->assertDatabaseHas('approval_histories', [
+        'approval_type' => 'poa',
+        'related_id'    => $poa->id,
+        'action'        => 'revision_requested',
+        'performed_by'  => $admin->id,
+    ]);
+});
+
+it('admin poa revision request requires admin_notes', function () {
+    $admin = makePoaAdmin();
+    $user  = makePoaUser();
+
+    $poa = PowerOfAttorney::create([
+        'user_id' => $user->id, 'type' => 'esign', 'status' => 'signed',
+        'signer_printed_name' => 'Test',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/users/{$user->id}/poa/{$poa->id}/request-revision", [])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['admin_notes']);
+});
+
+it('user can re-submit a POA after a revision is requested', function () {
+    $user = makePoaUser();
+
+    // Existing POA flagged for revision must not block a fresh submission.
+    PowerOfAttorney::create([
+        'user_id'   => $user->id,
+        'type'      => 'upload',
+        'status'    => 'revision_requested',
+        'file_path' => 'poa/old.pdf',
+    ]);
+
+    $this->actingAs($user, 'sanctum')
+        ->postJson('/api/v1/activation/poa/esign', [
+            'signer_printed_name' => 'Jane Doe Revised',
+        ])
+        ->assertStatus(201)
+        ->assertJsonPath('data.status', 'signed');
+
+    // Latest record returned by /my/poa is the new signed one.
+    $this->actingAs($user, 'sanctum')
+        ->getJson('/api/v1/my/poa')
+        ->assertOk()
+        ->assertJsonPath('data.status', 'signed')
+        ->assertJsonPath('data.signer_printed_name', 'Jane Doe Revised');
+});
+
+it('a revision_requested POA does not satisfy the approved-POA requirement', function () {
+    $user = makePoaUser();
+
+    PowerOfAttorney::create([
+        'user_id'   => $user->id,
+        'type'      => 'upload',
+        'status'    => 'revision_requested',
+        'file_path' => 'poa/old.pdf',
+    ]);
+
+    expect($user->fresh()->hasApprovedPoa())->toBeFalse();
+});
+
 // ══ ADMIN DOCUMENT REVIEW ════════════════════════════════════════════════
 
 it('admin can update a document status to approved', function () {

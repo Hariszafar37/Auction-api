@@ -87,8 +87,11 @@ class PowerOfAttorneyController extends Controller
      */
     public function show(Request $request): JsonResponse
     {
+        // Order by id (not created_at) so the most recently inserted record wins
+        // deterministically even when a re-submission shares the same timestamp
+        // as the record it supersedes.
         $poa = PowerOfAttorney::where('user_id', $request->user()->id)
-            ->latest()
+            ->latest('id')
             ->first();
 
         return $this->success($poa ? $this->formatPoa($poa) : null);
