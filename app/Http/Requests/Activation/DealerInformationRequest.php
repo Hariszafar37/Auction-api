@@ -31,7 +31,7 @@ class DealerInformationRequest extends FormRequest
             'dealer_country'            => ['required', 'string', 'size:2'],
             'dealer_city'               => ['required', 'string', 'max:100'],
             // Nullable in DB for backward compat with existing rows; frontend treats as required.
-            'dealer_state'              => ['nullable', 'string', 'max:100'],
+            'dealer_state'              => ['required', 'string', 'max:100'],
             'dealer_zip_code'           => ['required', 'string', 'max:20'],
             'dealer_type'               => ['nullable', 'in:retail,wholesale'],
             'dealer_classification'     => ['required', 'in:maryland_retail,maryland_wholesale,out_of_state_retail,out_of_state_wholesale'],
