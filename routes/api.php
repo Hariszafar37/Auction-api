@@ -401,8 +401,9 @@ Route::prefix('v1')->group(function () {
             // POA admin review — per-user
             Route::prefix('users/{user}/poa')->name('users.poa.')->group(function () {
                 Route::get('/',                   [AdminPoaController::class, 'index'])->name('index');
-                Route::post('/{poa}/approve',     [AdminPoaController::class, 'approve'])->name('approve');
-                Route::post('/{poa}/reject',      [AdminPoaController::class, 'reject'])->name('reject');
+                Route::post('/{poa}/approve',          [AdminPoaController::class, 'approve'])->name('approve');
+                Route::post('/{poa}/reject',           [AdminPoaController::class, 'reject'])->name('reject');
+                Route::post('/{poa}/request-revision', [AdminPoaController::class, 'requestRevision'])->name('request-revision');
             });
 
             // Government accounts
