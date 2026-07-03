@@ -253,7 +253,10 @@ class BiddingService
     {
         $errors = [];
 
-        if ($lot->status->isTerminal()) {
+        // if_sale is not a terminal status, but the live auction for this lot
+        // has closed — no further bids (manual or proxy) are accepted once a lot
+        // enters if_sale. Block it alongside the terminal statuses.
+        if ($lot->status === LotStatus::IfSale || $lot->status->isTerminal()) {
             $errors['lot'] = ['This lot is no longer accepting bids.'];
         }
 
