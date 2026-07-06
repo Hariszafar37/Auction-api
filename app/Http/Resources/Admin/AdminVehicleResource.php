@@ -40,7 +40,14 @@ class AdminVehicleResource extends JsonResource
             'additional_info'      => $this->additional_info,
             'has_title'            => $this->has_title,
             'title_state'      => $this->title_state,
-            'title_received'   => (bool) $this->title_received,
+            'title_received'    => (bool) $this->title_received,
+            'title_received_at' => $this->safeIso($this->title_received_at),
+            // Only present on single-vehicle responses (relationship eager-loaded);
+            // omitted from the listing to avoid an N+1 query.
+            'title_received_by' => $this->whenLoaded('titleReceivedBy', fn () => $this->titleReceivedBy ? [
+                'id'   => $this->titleReceivedBy->id,
+                'name' => $this->titleReceivedBy->name,
+            ] : null),
             'status'           => $this->status,
             'created_at'       => $this->safeIso($this->created_at),
             'seller'           => $this->whenLoaded('seller', fn () => [

@@ -380,3 +380,109 @@ it('admin can export vehicle list as XLSX', function () {
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         );
 });
+
+// ── Mark Title Received ───────────────────────────────────────────────────
+
+it('admin can mark a vehicle title as received', function () {
+    $seller  = makeSeller();
+    $vehicle = Vehicle::factory()->create([
+        'seller_id'      => $seller->id,
+        'status'         => 'available',
+        'title_received' => false,
+    ]);
+
+    $admin = makeAdminForVehicle();
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/vehicles/{$vehicle->id}/mark-title-received");
+
+    $response->assertStatus(200)
+        ->assertJsonPath('data.title_received', true);
+
+    $vehicle->refresh();
+    expect($vehicle->title_received)->toBeTrue();
+    expect($vehicle->title_received_at)->not->toBeNull();
+    expect($vehicle->title_received_by)->toBe($admin->id);
+});
+
+it('mark title received is idempotent-safe and rejects an already-received title', function () {
+    $seller  = makeSeller();
+    $vehicle = Vehicle::factory()->create([
+        'seller_id'         => $seller->id,
+        'status'            => 'available',
+        'title_received'    => true,
+        'title_received_at' => now(),
+    ]);
+
+    $this->actingAs(makeAdminForVehicle(), 'sanctum')
+        ->postJson("/api/v1/admin/vehicles/{$vehicle->id}/mark-title-received")
+        ->assertStatus(422);
+});
+
+it('non-admin cannot mark a vehicle title as received', function () {
+    $seller  = makeSeller();
+    $vehicle = Vehicle::factory()->create([
+        'seller_id'      => $seller->id,
+        'status'         => 'available',
+        'title_received' => false,
+    ]);
+
+    $this->actingAs(makeBuyerForVehicle(), 'sanctum')
+        ->postJson("/api/v1/admin/vehicles/{$vehicle->id}/mark-title-received")
+        ->assertStatus(403);
+
+    expect($vehicle->fresh()->title_received)->toBeFalse();
+});
+
+it('unauthenticated user cannot mark a vehicle title as received', function () {
+    $seller  = makeSeller();
+    $vehicle = Vehicle::factory()->create([
+        'seller_id'      => $seller->id,
+        'status'         => 'available',
+        'title_received' => false,
+    ]);
+
+    $this->postJson("/api/v1/admin/vehicles/{$vehicle->id}/mark-title-received")
+        ->assertStatus(401);
+});
+
+it('the normal vehicle update endpoint cannot toggle title_received', function () {
+    $seller  = makeSeller();
+    $vehicle = Vehicle::factory()->create([
+        'seller_id'      => $seller->id,
+        'status'         => 'available',
+        'title_received' => false,
+    ]);
+
+    // Attempt to smuggle title_received through the standard PATCH update.
+    $this->actingAs(makeAdminForVehicle(), 'sanctum')
+        ->patchJson("/api/v1/admin/vehicles/{$vehicle->id}", [
+            'make'              => 'Honda',
+            'title_received'    => true,
+            'title_received_at' => now()->toIso8601String(),
+        ])
+        ->assertStatus(200);
+
+    $vehicle->refresh();
+    expect($vehicle->make)->toBe('Honda');          // legitimate field updated
+    expect($vehicle->title_received)->toBeFalse();   // protected field untouched
+});
+
+it('single-vehicle response exposes title receipt audit fields', function () {
+    $seller = makeSeller();
+    $admin  = makeAdminForVehicle();
+    $vehicle = Vehicle::factory()->create([
+        'seller_id'         => $seller->id,
+        'status'            => 'available',
+        'title_received'    => true,
+        'title_received_at' => now(),
+        'title_received_by' => $admin->id,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/vehicles/{$vehicle->id}")
+        ->assertStatus(200)
+        ->assertJsonPath('data.title_received', true)
+        ->assertJsonPath('data.title_received_by.id', $admin->id)
+        ->assertJsonPath('data.title_received_by.name', $admin->name);
+});
