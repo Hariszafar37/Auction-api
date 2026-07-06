@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\Payment\PaymentController;
 use App\Http\Controllers\Api\V1\Purchase\GatePassController;
 use App\Http\Controllers\Api\V1\Purchase\PurchaseController;
 use App\Http\Controllers\Api\V1\Purchase\TransportController;
+use App\Http\Controllers\Api\V1\Admin\AdminAccountActionController;
 use App\Http\Controllers\Api\V1\Admin\AdminApprovalController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
@@ -155,7 +156,7 @@ Route::prefix('v1')->group(function () {
     | Authenticated Routes
     |--------------------------------------------------------------------------
     */
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'account.usable'])->group(function () {
 
         // Auth
         Route::prefix('auth')->name('auth.')->group(function () {
@@ -315,9 +316,12 @@ Route::prefix('v1')->group(function () {
                 Route::get('/',                [AdminUserController::class, 'index'])->name('index')->middleware('permission:users.view');
                 Route::post('/',               [AdminUserController::class, 'store'])->name('store')->middleware('permission:users.manage');
                 Route::get('/{user}',          [AdminUserController::class, 'show'])->name('show')->middleware('permission:users.view');
+                Route::get('/{user}/account-actions', [AdminUserController::class, 'accountActions'])->name('account-actions')->middleware('permission:users.view');
                 Route::patch('/{user}',        [AdminUserController::class, 'updateProfile'])->name('update')->middleware('permission:users.manage');
-                Route::patch('/{user}/status', [AdminUserController::class, 'updateStatus'])->name('status')->middleware('permission:users.manage');
-                Route::patch('/{user}/role',   [AdminUserController::class, 'updateRole'])->name('role')->middleware('permission:users.manage');
+                Route::patch('/{user}/status',  [AdminUserController::class, 'updateStatus'])->name('status')->middleware('permission:users.manage');
+                Route::patch('/{user}/bidding', [AdminUserController::class, 'toggleBidding'])->name('bidding')->middleware('permission:users.manage');
+                Route::patch('/{user}/selling', [AdminUserController::class, 'toggleSelling'])->name('selling')->middleware('permission:users.manage');
+                Route::patch('/{user}/role',    [AdminUserController::class, 'updateRole'])->name('role')->middleware('permission:users.manage');
 
                 // Admin edit of a user's profile sections (mirrors the user's own self-service edits)
                 Route::put('/{user}/account-information',  [AdminUserController::class, 'updateAccountInformation'])->name('account-information')->middleware('permission:users.manage');
@@ -348,6 +352,10 @@ Route::prefix('v1')->group(function () {
             });
 
             // Approval dashboard / history report — centralized view across all approval types
+            // Global account-restriction audit report (across all users)
+            Route::get('/account-actions/export', [AdminAccountActionController::class, 'export'])->name('account-actions.export')->middleware('permission:users.view');
+            Route::get('/account-actions',        [AdminAccountActionController::class, 'index'])->name('account-actions.index')->middleware('permission:users.view');
+
             Route::prefix('approvals')->name('approvals.')->group(function () {
                 Route::get('/dashboard',          [AdminApprovalController::class, 'dashboard'])->name('dashboard');
                 Route::get('/history',            [AdminApprovalController::class, 'history'])->name('history');

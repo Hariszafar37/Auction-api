@@ -48,6 +48,12 @@ class UserResource extends JsonResource
             'can_bid'                   => $this->canBid(),
             'bid_ineligibility_reason'  => $this->getBidIneligibilityReason(),
 
+            // Admin-toggled capability switches (independent of status). The
+            // frontend mirrors these in canPerformSellerActions() and to render
+            // the admin restriction controls.
+            'bidding_enabled'           => (bool) $this->bidding_enabled,
+            'selling_enabled'           => (bool) $this->selling_enabled,
+
             // Step data (loaded on demand)
             'account_information'     => $this->whenLoaded('accountInformation', fn () => $this->accountInformation ? [
                 'date_of_birth'      => $this->accountInformation->date_of_birth?->toDateString(),

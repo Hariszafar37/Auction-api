@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\AccountAction;
 use App\Models\DealerProfile;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
+use Laravel\Sanctum\PersonalAccessToken;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
@@ -496,4 +498,208 @@ it('user detail returns valid ISO-8601 for all date fields — no toIso8601Strin
         ->getJson("/api/v1/admin/users/{$user->id}")
         ->assertStatus(200)
         ->assertJsonPath('data.id', $user->id);
+});
+
+// ══ Account restrictions ══════════════════════════════════════════════════════
+
+it('admin can block a user and it revokes all tokens', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    // Simulate a live session for the target user.
+    $user->createToken('api');
+    expect($user->tokens()->count())->toBe(1);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/status", ['status' => 'blocked', 'reason' => 'fraud'])
+        ->assertStatus(200)
+        ->assertJsonPath('data.status', 'blocked');
+
+    expect($user->fresh()->status)->toBe('blocked');
+    // Hard lockout — every token deleted.
+    expect(PersonalAccessToken::where('tokenable_id', $user->id)->count())->toBe(0);
+});
+
+it('suspending a user does NOT revoke tokens', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->createToken('api');
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/status", ['status' => 'suspended'])
+        ->assertStatus(200);
+
+    expect(PersonalAccessToken::where('tokenable_id', $user->id)->count())->toBe(1);
+});
+
+it('reactivating a user restores active status but does NOT re-enable bidding/selling', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create([
+        'status'          => 'suspended',
+        'bidding_enabled' => false,
+        'selling_enabled' => false,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/status", ['status' => 'active'])
+        ->assertStatus(200)
+        ->assertJsonPath('data.status', 'active')
+        ->assertJsonPath('data.bidding_enabled', false)
+        ->assertJsonPath('data.selling_enabled', false);
+
+    $fresh = $user->fresh();
+    expect($fresh->status)->toBe('active');
+    expect($fresh->bidding_enabled)->toBeFalse();
+    expect($fresh->selling_enabled)->toBeFalse();
+});
+
+it('rejects a no-op status change', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/status", ['status' => 'active'])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'no_change');
+});
+
+it('records an audit row for a status change', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/status", ['status' => 'suspended', 'reason' => 'chargebacks']);
+
+    $action = AccountAction::where('subject_user_id', $user->id)->latest('id')->first();
+    expect($action)->not->toBeNull();
+    expect($action->action)->toBe('suspended');
+    expect($action->previous_value)->toBe('active');
+    expect($action->new_value)->toBe('suspended');
+    expect($action->reason)->toBe('chargebacks');
+    expect($action->performed_by)->toBe($admin->id);
+});
+
+it('admin can disable and re-enable bidding independently', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/bidding", ['enabled' => false, 'reason' => 'review'])
+        ->assertStatus(200)
+        ->assertJsonPath('data.bidding_enabled', false)
+        ->assertJsonPath('data.selling_enabled', true);
+
+    expect($user->fresh()->bidding_enabled)->toBeFalse();
+    expect(AccountAction::where('subject_user_id', $user->id)->where('action', 'bidding_disabled')->exists())->toBeTrue();
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/bidding", ['enabled' => true])
+        ->assertStatus(200)
+        ->assertJsonPath('data.bidding_enabled', true);
+});
+
+it('admin can disable selling without affecting bidding', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/selling", ['enabled' => false])
+        ->assertStatus(200)
+        ->assertJsonPath('data.selling_enabled', false)
+        ->assertJsonPath('data.bidding_enabled', true);
+
+    expect($user->fresh()->selling_enabled)->toBeFalse();
+});
+
+it('a bidding-disabled active user is blocked from bidding with bidding_disabled reason', function () {
+    $user = User::factory()->create(['status' => 'active', 'bidding_enabled' => false]);
+    expect($user->canBid())->toBeFalse();
+    expect($user->getBidIneligibilityReason())->toBe('bidding_disabled');
+});
+
+it('a selling-disabled active seller cannot perform seller actions', function () {
+    $user = User::factory()->create([
+        'status'          => 'active',
+        'account_intent'  => 'buyer_and_seller',
+        'selling_enabled' => false,
+    ]);
+    $user->assignRole('seller');
+    expect($user->canPerformSellerActions())->toBeFalse();
+});
+
+it('blocked users are locked out of every authenticated route by the middleware', function () {
+    $user = User::factory()->create(['status' => 'blocked']);
+
+    $this->actingAs($user, 'sanctum')
+        ->getJson('/api/v1/auth/me')
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'account_blocked');
+});
+
+it('blocking a user is denied login', function () {
+    $user = User::factory()->create(['status' => 'blocked', 'password' => bcrypt('password123')]);
+
+    $this->postJson('/api/v1/auth/login', [
+        'email'    => $user->email,
+        'password' => 'password123',
+    ])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'account_blocked');
+});
+
+// ══ Account-action audit history ══════════════════════════════════════════════
+
+it('returns account-action history newest first with full detail', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    // Two actions in sequence — suspend then disable bidding.
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/status", ['status' => 'suspended', 'reason' => 'chargebacks'])
+        ->assertStatus(200);
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$user->id}/bidding", ['enabled' => false])
+        ->assertStatus(200);
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}/account-actions")
+        ->assertStatus(200)
+        ->assertJsonCount(2, 'data');
+
+    // Newest first — the bidding toggle was performed last.
+    $response->assertJsonPath('data.0.action', 'bidding_disabled')
+             ->assertJsonPath('data.0.previous_value', 'enabled')
+             ->assertJsonPath('data.0.new_value', 'disabled')
+             ->assertJsonPath('data.0.performed_by', $admin->name);
+
+    $response->assertJsonPath('data.1.action', 'suspended')
+             ->assertJsonPath('data.1.previous_value', 'active')
+             ->assertJsonPath('data.1.new_value', 'suspended')
+             ->assertJsonPath('data.1.reason', 'chargebacks');
+});
+
+it('returns an empty history when no actions have been taken', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$user->id}/account-actions")
+        ->assertStatus(200)
+        ->assertJsonCount(0, 'data');
+});
+
+it('forbids a non-admin from reading account-action history', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $buyer->assignRole('buyer');
+    $subject = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($buyer, 'sanctum')
+        ->getJson("/api/v1/admin/users/{$subject->id}/account-actions")
+        ->assertStatus(403);
+});
+
+it('requires authentication to read account-action history', function () {
+    $subject = User::factory()->create(['status' => 'active']);
+
+    $this->getJson("/api/v1/admin/users/{$subject->id}/account-actions")
+        ->assertStatus(401);
 });

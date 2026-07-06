@@ -21,7 +21,10 @@ class UpdateUserStatusRequest extends FormRequest
                 'pending_activation',
                 'active',
                 'suspended',
+                'blocked',
             ])],
+            // Optional admin note captured on the account-action audit row.
+            'reason' => ['nullable', 'string', 'max:1000'],
         ];
     }
 }

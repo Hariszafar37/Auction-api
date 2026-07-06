@@ -157,6 +157,10 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($user->isBlocked()) {
+            return $this->error('Your account has been blocked. Please contact support.', 403, 'account_blocked');
+        }
+
         if ($user->isSuspended()) {
             return $this->error('Your account has been suspended. Please contact support.', 403, 'account_suspended');
         }

@@ -17,8 +17,10 @@ use Illuminate\Http\Request;
  *
  * Reasons currently emitted:
  *   - missing_payment    — no non-expired card on file
- *   - inactive_account   — status !== 'active' (excluding the suspended case)
+ *   - inactive_account   — status !== 'active' (excluding the suspended/blocked cases)
  *   - suspended          — status === 'suspended'
+ *   - blocked            — status === 'blocked'
+ *   - bidding_disabled   — admin revoked bidding (bidding_enabled === false)
  *   - terms_not_accepted — auction Terms & Conditions not accepted (current version) for this auction
  *
  * Future reasons (reserved, not yet wired):
