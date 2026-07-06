@@ -37,6 +37,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'agreed_terms_at',
         'password_set_at',
         'status',
+        'bidding_enabled',
+        'selling_enabled',
         'account_type',
         'account_intent',
         'activation_completed_at',
@@ -52,6 +54,16 @@ class User extends Authenticatable implements MustVerifyEmail
         'remember_token',
     ];
 
+    /**
+     * Attribute defaults so a freshly-instantiated (not-yet-reloaded) model
+     * reflects the DB column defaults. Without this, canBid()/canPerformSellerActions()
+     * would read null for these flags on an in-memory instance and wrongly gate the user.
+     */
+    protected $attributes = [
+        'bidding_enabled' => true,
+        'selling_enabled' => true,
+    ];
+
     protected function casts(): array
     {
         return [
@@ -61,6 +73,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'password_set_at'          => 'datetime',
             'activation_completed_at'  => 'datetime',
             'consent_marketing'        => 'boolean',
+            'bidding_enabled'          => 'boolean',
+            'selling_enabled'          => 'boolean',
             'agree_ecomm_consent'      => 'boolean',
             'agree_accuracy_confirmed' => 'boolean',
             'bidder_number'            => 'integer',
@@ -169,6 +183,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->status === 'suspended';
     }
 
+    public function isBlocked(): bool
+    {
+        return $this->status === 'blocked';
+    }
+
     public function isPendingEmailVerification(): bool
     {
         return $this->status === 'pending_email_verification';
@@ -272,16 +291,26 @@ class User extends Authenticatable implements MustVerifyEmail
      * than the generic "inactive_account" even though both fail isActive().
      *
      * Reason enum (keep in sync with BidNotAllowedException docblock):
-     *   suspended | inactive_account | missing_payment | null
+     *   blocked | suspended | inactive_account | bidding_disabled | missing_payment | null
      */
     public function getBidIneligibilityReason(): ?string
     {
+        if ($this->isBlocked()) {
+            return 'blocked';
+        }
+
         if ($this->isSuspended()) {
             return 'suspended';
         }
 
         if (! $this->isActive()) {
             return 'inactive_account';
+        }
+
+        // Admin-toggled bidding switch — independent of account status so an
+        // otherwise-active account can have bidding revoked on its own.
+        if (! $this->bidding_enabled) {
+            return 'bidding_disabled';
         }
 
         if (! $this->hasValidPaymentMethod()) {
@@ -342,9 +371,10 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Whether this user may perform seller write actions right now.
      *
-     * Requires BOTH:
+     * Requires ALL of:
      *   (a) an active account status (status === 'active'), AND
-     *   (b) selling intent (dealer role, seller role, or seller account_intent).
+     *   (b) selling intent (dealer role, seller role, or seller account_intent), AND
+     *   (c) the admin-toggled selling switch (selling_enabled) still on.
      *
      * Dealer/business accounts at 'pending_activation' (awaiting admin approval)
      * must return false even though they already hold role:dealer — their
@@ -356,6 +386,13 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function canPerformSellerActions(): bool
     {
-        return $this->isActive() && $this->hasSellIntent();
+        return $this->isActive() && $this->hasSellIntent() && $this->selling_enabled;
+    }
+
+    // ── Account-action audit relationship ─────────────────────────────────────
+
+    public function accountActions(): HasMany
+    {
+        return $this->hasMany(AccountAction::class, 'subject_user_id');
     }
 }

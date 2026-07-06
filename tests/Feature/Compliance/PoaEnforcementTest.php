@@ -290,13 +290,16 @@ it('suspended dealer cannot submit vehicle to auction', function () {
     $auction = makePoaAuction();
     $vehicle = Vehicle::factory()->create(['seller_id' => $dealer->id, 'status' => 'available']);
 
+    // Suspension is now caught by the EnsureAccountUsable middleware before the
+    // per-endpoint seller gate runs, so the response is account_suspended rather
+    // than seller_inactive. Either way, a suspended dealer cannot submit.
     $this->actingAs($dealer, 'sanctum')
         ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
             'auction_id'   => $auction->id,
             'starting_bid' => 500,
         ])
         ->assertStatus(403)
-        ->assertJsonPath('code', 'seller_inactive');
+        ->assertJsonPath('code', 'account_suspended');
 });
 
 // ══ BUYER ACCESS UNAFFECTED ═══════════════════════════════════════════════
