@@ -13,6 +13,7 @@ use App\Models\AuctionLot;
 use App\Models\Location;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Services\Payment\SellerSettlementService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -20,6 +21,7 @@ class AuctionService
 {
     public function __construct(
         private readonly AuctionLotService $lotService,
+        private readonly SellerSettlementService $settlements,
     ) {}
 
     // ─── Auction CRUD ────────────────────────────────────────────────────────────
@@ -150,6 +152,8 @@ class AuctionService
                 ->each(function (AuctionLot $lot) {
                     $lot->update(['status' => LotStatus::Cancelled]);
                     $lot->vehicle?->markAsAvailable();
+                    // Cancelled before finalization — void the seeded settlement.
+                    $this->settlements->voidForLot($lot);
                 });
 
             $auction->update(['status' => AuctionStatus::Cancelled]);
@@ -255,6 +259,10 @@ class AuctionService
 
             $vehicle->markAsInAuction();
 
+            // Seller financials begin here: seed the settlement so the $50
+            // registration fee attaches exactly once at registration time.
+            $this->settlements->seedForRegistration($lot);
+
             // Notify any subscribers who signed up for "Notify Me" on this vehicle.
             NotifyVehicleSubscribers::dispatch($vehicle->id, $auction->id);
 
@@ -291,6 +299,9 @@ class AuctionService
 
         $lot->vehicle?->markAsAvailable();
         $lot->update(['status' => LotStatus::Cancelled]);
+
+        // Never went to auction — reverse the seeded registration fee.
+        $this->settlements->voidForLot($lot);
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────────
