@@ -17,6 +17,14 @@ class UpdatePaymentSettingsRequest extends FormRequest
             'business_days_to_pay'  => ['sometimes', 'integer', 'min:0', 'max:60'],
             'late_fee_amount'       => ['sometimes', 'numeric', 'min:0', 'max:100000'],
 
+            // Seller settlement fee rules
+            'seller_registration_fee'     => ['sometimes', 'numeric', 'min:0', 'max:100000'],
+            'seller_commission_rate'      => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'seller_commission_threshold' => ['sometimes', 'integer', 'min:0', 'max:10000000'],
+            'seller_commission_flat'      => ['sometimes', 'numeric', 'min:0', 'max:100000'],
+            'seller_no_sale_fee'          => ['sometimes', 'numeric', 'min:0', 'max:100000'],
+            'seller_release_days'         => ['sometimes', 'integer', 'min:0', 'max:365'],
+
             'method_stripe_enabled' => ['sometimes', 'boolean'],
             'method_wire_enabled'   => ['sometimes', 'boolean'],
             'method_cash_enabled'   => ['sometimes', 'boolean'],

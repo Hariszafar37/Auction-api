@@ -3,6 +3,7 @@
 namespace App\Services\Auction;
 
 use App\Enums\LotStatus;
+use App\Events\Auction\LotDidNotSell;
 use App\Events\Auction\LotStatusChanged;
 use App\Events\Auction\UserWonLot;
 use App\Jobs\Auction\NotifyAuctionWinner;
@@ -59,8 +60,10 @@ class AuctionLotService
                     'status'    => LotStatus::NoSale,
                     'closed_at' => now(),
                 ]);
-                broadcast(new LotStatusChanged($lot->fresh(), $previous));
-                return $lot->fresh();
+                $fresh = $lot->fresh();
+                broadcast(new LotStatusChanged($fresh, $previous));
+                event(new LotDidNotSell($fresh));
+                return $fresh;
             }
 
             // Reserve not met
@@ -73,8 +76,10 @@ class AuctionLotService
                     'status'    => LotStatus::ReserveNotMet,
                     'closed_at' => now(),
                 ]);
-                broadcast(new LotStatusChanged($lot->fresh(), $previous));
-                return $lot->fresh();
+                $fresh = $lot->fresh();
+                broadcast(new LotStatusChanged($fresh, $previous));
+                event(new LotDidNotSell($fresh));
+                return $fresh;
             }
 
             // Reserve met — check if seller approval required
@@ -123,9 +128,12 @@ class AuctionLotService
 
         $lot->vehicle?->markAsAvailable();
 
-        broadcast(new LotStatusChanged($lot->fresh(), $previous));
+        $fresh = $lot->fresh();
+        broadcast(new LotStatusChanged($fresh, $previous));
+        // Rejected/expired if-sale lot did not sell — trigger the no-sale fee.
+        event(new LotDidNotSell($fresh));
 
-        return $lot->fresh();
+        return $fresh;
     }
 
     /**

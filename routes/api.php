@@ -5,11 +5,13 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
 use App\Http\Controllers\Api\V1\Admin\AdminFeeController;
 use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
+use App\Http\Controllers\Api\V1\Admin\AdminSellerSettlementController;
 use App\Http\Controllers\Api\V1\Admin\AdminPaymentSettingController;
 use App\Http\Controllers\Api\V1\Admin\AdminPurchaseController;
 use App\Http\Controllers\Api\V1\Admin\AdminTransportController;
 use App\Http\Controllers\Api\V1\Payment\InvoiceController;
 use App\Http\Controllers\Api\V1\Payment\PaymentController;
+use App\Http\Controllers\Api\V1\Payment\SellerSettlementController;
 use App\Http\Controllers\Api\V1\Purchase\GatePassController;
 use App\Http\Controllers\Api\V1\Purchase\PurchaseController;
 use App\Http\Controllers\Api\V1\Purchase\TransportController;
@@ -255,6 +257,14 @@ Route::prefix('v1')->group(function () {
             Route::post('/{invoice}/submit-payment',  [PaymentController::class, 'submitNonCard'])->name('submit-payment');
         });
 
+        // My settlements (seller earnings — read-only)
+        Route::prefix('my/settlements')->name('my.settlements.')->group(function () {
+            Route::get('/',                  [SellerSettlementController::class, 'index'])->name('index');
+            Route::get('/summary',           [SellerSettlementController::class, 'summary'])->name('summary');
+            Route::get('/{settlement}',      [SellerSettlementController::class, 'show'])->name('show');
+            Route::get('/{settlement}/pdf',  [SellerSettlementController::class, 'pdf'])->name('pdf');
+        });
+
         // Vehicle notifications — requires auth
         Route::post('/vehicles/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('vehicles.notify');
 
@@ -469,6 +479,21 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{invoice}/adjustments',                    [AdminInvoiceController::class, 'applyAdjustment'])->name('adjustments')->middleware('permission:payments.manage');
                 Route::post('/{invoice}/late-fee',                       [AdminInvoiceController::class, 'applyLateFee'])->name('late-fee')->middleware('permission:payments.manage');
                 Route::post('/{invoice}/payments/{payment}/reverse',     [AdminInvoiceController::class, 'reversePayment'])->name('payments.reverse')->middleware('permission:payments.manage');
+            });
+
+            // Seller settlements — commission / registration / no-sale fees + check workflow
+            // NOTE: /export registered BEFORE /{settlement} to avoid routing conflict.
+            Route::prefix('settlements')->name('settlements.')->middleware('permission:payments.view')->group(function () {
+                Route::get('/export',                    [AdminSellerSettlementController::class, 'export'])->name('export');
+                Route::get('/summary',                   [AdminSellerSettlementController::class, 'summary'])->name('summary');
+                Route::get('/',                          [AdminSellerSettlementController::class, 'index'])->name('index');
+                Route::get('/{settlement}',              [AdminSellerSettlementController::class, 'show'])->name('show');
+                Route::get('/{settlement}/pdf',          [AdminSellerSettlementController::class, 'pdf'])->name('pdf');
+                Route::post('/{settlement}/ready',       [AdminSellerSettlementController::class, 'markReady'])->name('ready')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/issue-check', [AdminSellerSettlementController::class, 'issueCheck'])->name('issue-check')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/mark-paid',   [AdminSellerSettlementController::class, 'markPaid'])->name('mark-paid')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/mark-collected', [AdminSellerSettlementController::class, 'markCollected'])->name('mark-collected')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/adjustments', [AdminSellerSettlementController::class, 'applyAdjustment'])->name('adjustments')->middleware('permission:payments.manage');
             });
 
             // Payment settings (non-card workflow configuration)

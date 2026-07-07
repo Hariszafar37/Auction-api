@@ -18,6 +18,14 @@ class PaymentSettingResource extends JsonResource
             'business_days_to_pay'  => (int) $this->business_days_to_pay,
             'late_fee_amount'       => (float) $this->late_fee_amount,
 
+            // Seller settlement fee rules
+            'seller_registration_fee'     => (float) $this->seller_registration_fee,
+            'seller_commission_rate'      => (float) $this->seller_commission_rate,
+            'seller_commission_threshold' => (int) $this->seller_commission_threshold,
+            'seller_commission_flat'      => (float) $this->seller_commission_flat,
+            'seller_no_sale_fee'          => (float) $this->seller_no_sale_fee,
+            'seller_release_days'         => (int) $this->seller_release_days,
+
             'method_stripe_enabled' => (bool) $this->method_stripe_enabled,
             'method_wire_enabled'   => (bool) $this->method_wire_enabled,
             'method_cash_enabled'   => (bool) $this->method_cash_enabled,
