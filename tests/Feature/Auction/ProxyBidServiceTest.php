@@ -191,3 +191,53 @@ it('records a contested rung for the losing proxy so the duel is visible in hist
     // No Alice bid was ever recorded at her 5000 max.
     expect(Bid::where('auction_lot_id', $lot->id)->where('amount', 5000)->exists())->toBeFalse();
 });
+
+// ─── First-max-wins on a manual-bid tie (Issue #8) ────────────────────────────
+
+it('gives an earlier proxy priority when a later manual bid ties its maximum', function () {
+    $alice = User::factory()->create(['status' => 'active']);
+    $bob   = User::factory()->create(['status' => 'active']);
+
+    // Bob currently leads with a manual bid of 5000; Alice registered a proxy
+    // max of exactly 5000 BEFORE Bob's bid landed.
+    $lot = $this->createLot(winner: $bob, overrides: [
+        'current_bid' => 5000,
+        'bid_count'   => 1,
+        'status'      => LotStatus::Open,
+    ]);
+    winningBidFor($lot, $bob, 5000);
+    ProxyBid::create([
+        'auction_lot_id' => $lot->id, 'user_id' => $alice->id, 'max_amount' => 5000, 'is_active' => true,
+    ]);
+
+    (new ProxyBidService())->resolveAfterManualBid($lot->fresh(), $bob);
+
+    $lot->refresh();
+
+    // Tie on maximum → the first-registered proxy (Alice) reclaims the lead at 5000.
+    expect($lot->current_winner_id)->toBe($alice->id)
+        ->and($lot->current_bid)->toBe(5000);
+});
+
+it('does not let a proxy whose max is below the current bid reclaim the lead', function () {
+    $alice = User::factory()->create(['status' => 'active']);
+    $bob   = User::factory()->create(['status' => 'active']);
+
+    $lot = $this->createLot(winner: $bob, overrides: [
+        'current_bid' => 5000,
+        'bid_count'   => 1,
+        'status'      => LotStatus::Open,
+    ]);
+    winningBidFor($lot, $bob, 5000);
+    ProxyBid::create([
+        'auction_lot_id' => $lot->id, 'user_id' => $alice->id, 'max_amount' => 4000, 'is_active' => true,
+    ]);
+
+    (new ProxyBidService())->resolveAfterManualBid($lot->fresh(), $bob);
+
+    $lot->refresh();
+
+    // Alice's ceiling is below the current bid, so Bob keeps the lead.
+    expect($lot->current_winner_id)->toBe($bob->id)
+        ->and($lot->current_bid)->toBe(5000);
+});

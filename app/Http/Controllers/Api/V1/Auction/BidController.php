@@ -136,10 +136,25 @@ class BidController extends Controller
             return $this->error('Lot does not belong to this auction.', 404, 'not_found');
         }
 
+        // Order by id (the DB auto-increment), NOT by placed_at.
+        //
+        // This is a chronological bid history — it must reflect the true order in
+        // which bids were recorded. placed_at is a wall-clock timestamp at second
+        // precision and is NOT a reliable sequencer: under clock skew between app
+        // workers (each now() reads its own system clock) two bids in the same
+        // second — or even a later bid on a lagging worker — can be stamped out of
+        // order, so a lower bid sorts above a higher one. id is a single-source,
+        // strictly increasing sequence assigned by the database at insert time, so
+        // it orders bids by their true recording order regardless of clock skew.
+        //
+        // Because every bid is recorded at an amount strictly above the current
+        // price (manual/proxy/auto/contested-rung all enforce this), the recording
+        // order is also the ascending-price order — so newest/highest naturally
+        // sits on top and a lower bid can never appear above a higher one. This is
+        // display ordering only; proxy resolution is untouched.
         $bids = $lot->bids()
             ->with('user:id,bidder_number')
-            ->orderByDesc('placed_at')
-            ->orderByDesc('id') // tiebreak: keep the resolved winner above its contested rung when timestamps match
+            ->orderByDesc('id')
             ->paginate($request->integer('per_page', 20));
 
         return $this->success(

@@ -39,7 +39,7 @@ class PoaRejectedNotification extends Notification implements ShouldQueue
 
         return $mail
             ->line('Please re-upload a corrected POA document to proceed with vehicle submissions.')
-            ->action('Re-upload POA', "{$frontendUrl}/activation/power-of-attorney")
+            ->action('Re-upload POA', "{$frontendUrl}/poa")
             ->line('Contact our support team if you need assistance.');
     }
 
@@ -51,7 +51,7 @@ class PoaRejectedNotification extends Notification implements ShouldQueue
             'type'       => 'poa_rejected',
             'title'      => 'Power of Attorney not approved',
             'message'    => 'Your POA could not be approved — please re-upload a corrected document.',
-            'action_url' => "{$frontendUrl}/activation/power-of-attorney",
+            'action_url' => "{$frontendUrl}/poa",
             'meta'       => ['admin_notes' => $this->adminNotes],
         ];
     }

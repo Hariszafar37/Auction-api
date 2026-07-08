@@ -16,7 +16,9 @@ use App\Http\Requests\Profile\UpdateAccountInformationRequest;
 use App\Http\Requests\Profile\UpdateBillingInformationRequest;
 use App\Http\Requests\Profile\UpdateBusinessInformationRequest;
 use App\Http\Requests\Profile\UpdateDealerInformationRequest;
+use App\Http\Resources\Admin\AccountActionResource;
 use App\Http\Resources\UserResource;
+use App\Models\AccountAction;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use Illuminate\Http\JsonResponse;
@@ -130,15 +132,175 @@ class AdminUserController extends Controller
 
     /**
      * PATCH /api/v1/admin/users/{user}/status
+     *
+     * Administrative account-state change: suspend / block / reactivate (and the
+     * legacy pending_* values). Blocking is a hard lockout — every active Sanctum
+     * token is revoked so the restriction takes effect immediately. Suspension is
+     * enforced per-request by the EnsureAccountUsable middleware without deleting
+     * tokens (softer, reversible). Reactivating only restores status — it does NOT
+     * re-enable bidding/selling if an admin previously disabled them.
      */
     public function updateStatus(UpdateUserStatusRequest $request, User $user): JsonResponse
     {
-        $user->update(['status' => $request->status]);
+        $previous  = $user->status;
+        $newStatus = $request->status;
+
+        if ($previous === $newStatus) {
+            return $this->error('User is already in that status.', 422, 'no_change');
+        }
+
+        $user->update(['status' => $newStatus]);
+
+        // Hard lockout: kill all live sessions the moment an account is blocked.
+        if ($newStatus === 'blocked') {
+            $user->tokens()->delete();
+        }
+
+        $this->recordAccountAction(
+            $request,
+            $user,
+            $request->user(),
+            self::statusAction($newStatus),
+            $previous,
+            $newStatus,
+            $request->input('reason'),
+        );
 
         return $this->success(
             new UserResource($user->fresh(self::DETAIL_RELATIONS)),
             'User status updated.'
         );
+    }
+
+    /**
+     * PATCH /api/v1/admin/users/{user}/bidding
+     *
+     * Toggle the account's bidding capability, independent of status. Enforced
+     * server-side via User::canBid() on every bid (manual + proxy).
+     */
+    public function toggleBidding(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'reason'  => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $enabled = (bool) $validated['enabled'];
+
+        if ((bool) $user->bidding_enabled === $enabled) {
+            return $this->error('Bidding is already in that state.', 422, 'no_change');
+        }
+
+        $user->update(['bidding_enabled' => $enabled]);
+
+        $this->recordAccountAction(
+            $request,
+            $user,
+            $request->user(),
+            $enabled ? AccountAction::ACTION_BIDDING_ENABLED : AccountAction::ACTION_BIDDING_DISABLED,
+            $enabled ? 'disabled' : 'enabled',
+            $enabled ? 'enabled' : 'disabled',
+            $validated['reason'] ?? null,
+        );
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            $enabled ? 'Bidding enabled.' : 'Bidding disabled.'
+        );
+    }
+
+    /**
+     * PATCH /api/v1/admin/users/{user}/selling
+     *
+     * Toggle the account's selling capability, independent of status. Enforced
+     * server-side via User::canPerformSellerActions() on every seller write.
+     */
+    public function toggleSelling(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'reason'  => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $enabled = (bool) $validated['enabled'];
+
+        if ((bool) $user->selling_enabled === $enabled) {
+            return $this->error('Selling is already in that state.', 422, 'no_change');
+        }
+
+        $user->update(['selling_enabled' => $enabled]);
+
+        $this->recordAccountAction(
+            $request,
+            $user,
+            $request->user(),
+            $enabled ? AccountAction::ACTION_SELLING_ENABLED : AccountAction::ACTION_SELLING_DISABLED,
+            $enabled ? 'disabled' : 'enabled',
+            $enabled ? 'enabled' : 'disabled',
+            $validated['reason'] ?? null,
+        );
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            $enabled ? 'Selling enabled.' : 'Selling disabled.'
+        );
+    }
+
+    /**
+     * GET /api/v1/admin/users/{user}/account-actions
+     *
+     * Read-only account-restriction audit trail for a single user, newest first.
+     * Eager-loads the performer to avoid N+1 queries.
+     */
+    public function accountActions(User $user): JsonResponse
+    {
+        $actions = $user->accountActions()
+            ->with('performer:id,name')
+            ->orderByDesc('performed_at')
+            ->orderByDesc('id')
+            ->get();
+
+        return $this->success(AccountActionResource::collection($actions));
+    }
+
+    /**
+     * Map a target status to the audit action verb.
+     */
+    private static function statusAction(string $status): string
+    {
+        return match ($status) {
+            'suspended' => AccountAction::ACTION_SUSPENDED,
+            'blocked'   => AccountAction::ACTION_BLOCKED,
+            'active'    => AccountAction::ACTION_REACTIVATED,
+            default     => AccountAction::ACTION_STATUS_CHANGED,
+        };
+    }
+
+    /**
+     * Append an immutable audit row for an administrative account action,
+     * capturing the acting admin's request context (IP + user agent) for
+     * compliance and investigations.
+     */
+    private function recordAccountAction(
+        Request $request,
+        User $subject,
+        User $admin,
+        string $action,
+        ?string $previousValue,
+        ?string $newValue,
+        ?string $reason,
+    ): void {
+        AccountAction::create([
+            'subject_user_id' => $subject->id,
+            'action'          => $action,
+            'previous_value'  => $previousValue,
+            'new_value'       => $newValue,
+            'reason'          => $reason,
+            'performed_by'    => $admin->id,
+            'ip_address'      => $request->ip(),
+            'user_agent'      => $request->userAgent(),
+            'performed_at'    => now(),
+        ]);
     }
 
     /**

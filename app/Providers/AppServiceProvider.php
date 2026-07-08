@@ -7,7 +7,9 @@ use App\Events\Account\AccountRejected;
 use App\Events\Account\DocumentStatusUpdated;
 use App\Events\Account\POAApproved;
 use App\Events\Account\POARejected;
+use App\Events\Account\POARevisionRequested;
 use App\Events\Auction\BidPlaced;
+use App\Events\Auction\LotDidNotSell;
 use App\Events\Auction\OutbidNotification;
 use App\Events\Auction\UserWonLot;
 use App\Listeners\Account\SendAccountApprovedNotification;
@@ -15,10 +17,13 @@ use App\Listeners\Account\SendAccountRejectedNotification;
 use App\Listeners\Account\SendDocumentStatusNotification;
 use App\Listeners\Account\SendPOAApprovedNotification;
 use App\Listeners\Account\SendPOARejectedNotification;
+use App\Listeners\Account\SendPOARevisionRequestedNotification;
 use App\Listeners\Auction\SendAuctionWonNotification;
 use App\Listeners\Auction\SendBidPlacedNotification;
 use App\Listeners\Auction\SendOutbidEmailNotification;
 use App\Listeners\Payment\CreateInvoiceForWonLot;
+use App\Listeners\Payment\GenerateSellerSettlementForNoSale;
+use App\Listeners\Payment\GenerateSellerSettlementForWonLot;
 use App\Listeners\Pickup\CreatePurchaseDetailForWonLot;
 use App\Models\PowerOfAttorney;
 use App\Models\PurchaseDetail;
@@ -86,6 +91,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(AccountRejected::class, SendAccountRejectedNotification::class);
         Event::listen(POAApproved::class, SendPOAApprovedNotification::class);
         Event::listen(POARejected::class, SendPOARejectedNotification::class);
+        Event::listen(POARevisionRequested::class, SendPOARevisionRequestedNotification::class);
         Event::listen(DocumentStatusUpdated::class, SendDocumentStatusNotification::class);
 
         // ── Auction domain events ─────────────────────────────────────────────────
@@ -94,5 +100,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(UserWonLot::class, SendAuctionWonNotification::class);
         Event::listen(UserWonLot::class, CreateInvoiceForWonLot::class);
         Event::listen(UserWonLot::class, CreatePurchaseDetailForWonLot::class);
+        Event::listen(UserWonLot::class, GenerateSellerSettlementForWonLot::class);
+        Event::listen(LotDidNotSell::class, GenerateSellerSettlementForNoSale::class);
     }
 }

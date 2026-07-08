@@ -253,7 +253,10 @@ class BiddingService
     {
         $errors = [];
 
-        if ($lot->status->isTerminal()) {
+        // if_sale is not a terminal status, but the live auction for this lot
+        // has closed — no further bids (manual or proxy) are accepted once a lot
+        // enters if_sale. Block it alongside the terminal statuses.
+        if ($lot->status === LotStatus::IfSale || $lot->status->isTerminal()) {
             $errors['lot'] = ['This lot is no longer accepting bids.'];
         }
 
@@ -267,8 +270,13 @@ class BiddingService
             $errors['lot'] = ['You cannot bid on your own vehicle.'];
         }
 
-        $minBid = $lot->nextMinimumBid();
-        if ($maxAmount < $minBid) {
+        // A maximum at or below the current live bid can never win, so reject it
+        // with a clear message before falling back to the increment-based minimum.
+        $minBid     = $lot->nextMinimumBid();
+        $currentBid = $lot->current_bid ?? 0;
+        if ($currentBid > 0 && $maxAmount <= $currentBid) {
+            $errors['max_amount'] = ['Your maximum bid must be greater than the current bid.'];
+        } elseif ($maxAmount < $minBid) {
             $errors['max_amount'] = ["Max bid must be at least \${$minBid}."];
         }
 
