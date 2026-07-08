@@ -126,7 +126,11 @@ it('inactive user is blocked with BID_NOT_ALLOWED/inactive_account', function ()
              ->assertJsonPath('success', false);
 });
 
-it('suspended user is blocked with BID_NOT_ALLOWED/suspended', function () {
+it('suspended user is denied at the API boundary (account_suspended)', function () {
+    // Suspension is now enforced by the EnsureAccountUsable middleware, which
+    // pre-empts the per-endpoint bid gate — a suspended account cannot reach any
+    // authenticated route. The reason=suspended bid-gate branch is still covered
+    // at the model level above.
     [$auction, $lot] = makeBidEligibilityLot();
 
     $buyer = User::factory()->create(['status' => 'suspended']);
@@ -138,8 +142,7 @@ it('suspended user is blocked with BID_NOT_ALLOWED/suspended', function () {
         ]);
 
     $response->assertStatus(403)
-             ->assertJsonPath('code', 'BID_NOT_ALLOWED')
-             ->assertJsonPath('reason', 'suspended');
+             ->assertJsonPath('code', 'account_suspended');
 });
 
 it('proxy bid by inactive user is blocked with inactive_account reason', function () {
@@ -158,7 +161,7 @@ it('proxy bid by inactive user is blocked with inactive_account reason', functio
              ->assertJsonPath('reason', 'inactive_account');
 });
 
-it('proxy bid by suspended user is blocked with suspended reason', function () {
+it('proxy bid by suspended user is denied at the API boundary (account_suspended)', function () {
     [$auction, $lot] = makeBidEligibilityLot();
 
     $buyer = User::factory()->create(['status' => 'suspended']);
@@ -170,8 +173,7 @@ it('proxy bid by suspended user is blocked with suspended reason', function () {
         ]);
 
     $response->assertStatus(403)
-             ->assertJsonPath('code', 'BID_NOT_ALLOWED')
-             ->assertJsonPath('reason', 'suspended');
+             ->assertJsonPath('code', 'account_suspended');
 });
 
 // ══ UserResource exposure ═════════════════════════════════════════════════════
@@ -200,14 +202,17 @@ it('exposes can_bid=false and reason=missing_payment when no card', function () 
              ->assertJsonPath('data.bid_ineligibility_reason', 'missing_payment');
 });
 
-it('exposes can_bid=false and reason=suspended for suspended accounts', function () {
+it('suspended account cannot reach /auth/me (account_suspended)', function () {
+    // A suspended account is denied every authenticated route by the
+    // EnsureAccountUsable middleware, so it can no longer read /auth/me.
+    // The can_bid=false / reason=suspended resource output is covered by the
+    // model-level gate tests above.
     $user = User::factory()->create(['status' => 'suspended']);
     $this->givePaymentMethod($user);
 
     $response = $this->actingAs($user, 'sanctum')
         ->getJson('/api/v1/auth/me');
 
-    $response->assertStatus(200)
-             ->assertJsonPath('data.can_bid', false)
-             ->assertJsonPath('data.bid_ineligibility_reason', 'suspended');
+    $response->assertStatus(403)
+             ->assertJsonPath('code', 'account_suspended');
 });

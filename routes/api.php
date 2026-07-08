@@ -5,14 +5,17 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionController;
 use App\Http\Controllers\Api\V1\Admin\AdminFeeController;
 use App\Http\Controllers\Api\V1\Admin\AdminInvoiceController;
+use App\Http\Controllers\Api\V1\Admin\AdminSellerSettlementController;
 use App\Http\Controllers\Api\V1\Admin\AdminPaymentSettingController;
 use App\Http\Controllers\Api\V1\Admin\AdminPurchaseController;
 use App\Http\Controllers\Api\V1\Admin\AdminTransportController;
 use App\Http\Controllers\Api\V1\Payment\InvoiceController;
 use App\Http\Controllers\Api\V1\Payment\PaymentController;
+use App\Http\Controllers\Api\V1\Payment\SellerSettlementController;
 use App\Http\Controllers\Api\V1\Purchase\GatePassController;
 use App\Http\Controllers\Api\V1\Purchase\PurchaseController;
 use App\Http\Controllers\Api\V1\Purchase\TransportController;
+use App\Http\Controllers\Api\V1\Admin\AdminAccountActionController;
 use App\Http\Controllers\Api\V1\Admin\AdminApprovalController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
@@ -155,7 +158,7 @@ Route::prefix('v1')->group(function () {
     | Authenticated Routes
     |--------------------------------------------------------------------------
     */
-    Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware(['auth:sanctum', 'account.usable'])->group(function () {
 
         // Auth
         Route::prefix('auth')->name('auth.')->group(function () {
@@ -254,6 +257,14 @@ Route::prefix('v1')->group(function () {
             Route::post('/{invoice}/submit-payment',  [PaymentController::class, 'submitNonCard'])->name('submit-payment');
         });
 
+        // My settlements (seller earnings — read-only)
+        Route::prefix('my/settlements')->name('my.settlements.')->group(function () {
+            Route::get('/',                  [SellerSettlementController::class, 'index'])->name('index');
+            Route::get('/summary',           [SellerSettlementController::class, 'summary'])->name('summary');
+            Route::get('/{settlement}',      [SellerSettlementController::class, 'show'])->name('show');
+            Route::get('/{settlement}/pdf',  [SellerSettlementController::class, 'pdf'])->name('pdf');
+        });
+
         // Vehicle notifications — requires auth
         Route::post('/vehicles/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('vehicles.notify');
 
@@ -315,9 +326,12 @@ Route::prefix('v1')->group(function () {
                 Route::get('/',                [AdminUserController::class, 'index'])->name('index')->middleware('permission:users.view');
                 Route::post('/',               [AdminUserController::class, 'store'])->name('store')->middleware('permission:users.manage');
                 Route::get('/{user}',          [AdminUserController::class, 'show'])->name('show')->middleware('permission:users.view');
+                Route::get('/{user}/account-actions', [AdminUserController::class, 'accountActions'])->name('account-actions')->middleware('permission:users.view');
                 Route::patch('/{user}',        [AdminUserController::class, 'updateProfile'])->name('update')->middleware('permission:users.manage');
-                Route::patch('/{user}/status', [AdminUserController::class, 'updateStatus'])->name('status')->middleware('permission:users.manage');
-                Route::patch('/{user}/role',   [AdminUserController::class, 'updateRole'])->name('role')->middleware('permission:users.manage');
+                Route::patch('/{user}/status',  [AdminUserController::class, 'updateStatus'])->name('status')->middleware('permission:users.manage');
+                Route::patch('/{user}/bidding', [AdminUserController::class, 'toggleBidding'])->name('bidding')->middleware('permission:users.manage');
+                Route::patch('/{user}/selling', [AdminUserController::class, 'toggleSelling'])->name('selling')->middleware('permission:users.manage');
+                Route::patch('/{user}/role',    [AdminUserController::class, 'updateRole'])->name('role')->middleware('permission:users.manage');
 
                 // Admin edit of a user's profile sections (mirrors the user's own self-service edits)
                 Route::put('/{user}/account-information',  [AdminUserController::class, 'updateAccountInformation'])->name('account-information')->middleware('permission:users.manage');
@@ -348,6 +362,10 @@ Route::prefix('v1')->group(function () {
             });
 
             // Approval dashboard / history report — centralized view across all approval types
+            // Global account-restriction audit report (across all users)
+            Route::get('/account-actions/export', [AdminAccountActionController::class, 'export'])->name('account-actions.export')->middleware('permission:users.view');
+            Route::get('/account-actions',        [AdminAccountActionController::class, 'index'])->name('account-actions.index')->middleware('permission:users.view');
+
             Route::prefix('approvals')->name('approvals.')->group(function () {
                 Route::get('/dashboard',          [AdminApprovalController::class, 'dashboard'])->name('dashboard');
                 Route::get('/history',            [AdminApprovalController::class, 'history'])->name('history');
@@ -401,8 +419,9 @@ Route::prefix('v1')->group(function () {
             // POA admin review — per-user
             Route::prefix('users/{user}/poa')->name('users.poa.')->group(function () {
                 Route::get('/',                   [AdminPoaController::class, 'index'])->name('index');
-                Route::post('/{poa}/approve',     [AdminPoaController::class, 'approve'])->name('approve');
-                Route::post('/{poa}/reject',      [AdminPoaController::class, 'reject'])->name('reject');
+                Route::post('/{poa}/approve',          [AdminPoaController::class, 'approve'])->name('approve');
+                Route::post('/{poa}/reject',           [AdminPoaController::class, 'reject'])->name('reject');
+                Route::post('/{poa}/request-revision', [AdminPoaController::class, 'requestRevision'])->name('request-revision');
             });
 
             // Government accounts
@@ -460,6 +479,21 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{invoice}/adjustments',                    [AdminInvoiceController::class, 'applyAdjustment'])->name('adjustments')->middleware('permission:payments.manage');
                 Route::post('/{invoice}/late-fee',                       [AdminInvoiceController::class, 'applyLateFee'])->name('late-fee')->middleware('permission:payments.manage');
                 Route::post('/{invoice}/payments/{payment}/reverse',     [AdminInvoiceController::class, 'reversePayment'])->name('payments.reverse')->middleware('permission:payments.manage');
+            });
+
+            // Seller settlements — commission / registration / no-sale fees + check workflow
+            // NOTE: /export registered BEFORE /{settlement} to avoid routing conflict.
+            Route::prefix('settlements')->name('settlements.')->middleware('permission:payments.view')->group(function () {
+                Route::get('/export',                    [AdminSellerSettlementController::class, 'export'])->name('export');
+                Route::get('/summary',                   [AdminSellerSettlementController::class, 'summary'])->name('summary');
+                Route::get('/',                          [AdminSellerSettlementController::class, 'index'])->name('index');
+                Route::get('/{settlement}',              [AdminSellerSettlementController::class, 'show'])->name('show');
+                Route::get('/{settlement}/pdf',          [AdminSellerSettlementController::class, 'pdf'])->name('pdf');
+                Route::post('/{settlement}/ready',       [AdminSellerSettlementController::class, 'markReady'])->name('ready')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/issue-check', [AdminSellerSettlementController::class, 'issueCheck'])->name('issue-check')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/mark-paid',   [AdminSellerSettlementController::class, 'markPaid'])->name('mark-paid')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/mark-collected', [AdminSellerSettlementController::class, 'markCollected'])->name('mark-collected')->middleware('permission:payments.manage');
+                Route::post('/{settlement}/adjustments', [AdminSellerSettlementController::class, 'applyAdjustment'])->name('adjustments')->middleware('permission:payments.manage');
             });
 
             // Payment settings (non-card workflow configuration)

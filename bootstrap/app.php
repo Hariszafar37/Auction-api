@@ -27,7 +27,27 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission'         => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
             'optional.auth'      => \App\Http\Middleware\OptionalSanctumAuth::class,
+            'account.usable'     => \App\Http\Middleware\EnsureAccountUsable::class,
         ]);
+
+        // Trust reverse proxies / load balancers so the real client IP is read
+        // from X-Forwarded-For (used by the account-action audit log). Configured
+        // via TRUSTED_PROXIES:
+        //   - unset/empty → trust nothing (safe default; $request->ip() is the direct peer)
+        //   - '*'         → trust all proxies (typical single ELB/nginx in front)
+        //   - CSV list    → trust only those proxy IPs / CIDRs
+        $trustedProxies = trim((string) env('TRUSTED_PROXIES'));
+        if ($trustedProxies !== '') {
+            $middleware->trustProxies(
+                at: $trustedProxies === '*'
+                    ? '*'
+                    : array_values(array_filter(array_map('trim', explode(',', $trustedProxies)))),
+                headers: Request::HEADER_X_FORWARDED_FOR
+                    | Request::HEADER_X_FORWARDED_HOST
+                    | Request::HEADER_X_FORWARDED_PORT
+                    | Request::HEADER_X_FORWARDED_PROTO,
+            );
+        }
     })
     ->withExceptions(function (Exceptions $exceptions) {
 

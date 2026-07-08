@@ -3,6 +3,7 @@
 use App\Console\Commands\AccrueStorageFees;
 use App\Console\Commands\CheckDepositExpiry;
 use App\Console\Commands\MarkOverdueInvoices;
+use App\Console\Commands\ReleaseSellerSettlements;
 use App\Jobs\Auction\ProcessIfSaleExpiry;
 use App\Jobs\Auction\ProcessLotClose;
 use App\Jobs\Auction\StartScheduledAuctions;
@@ -43,3 +44,12 @@ Schedule::command(AccrueStorageFees::class)->dailyAt('00:05');
 
 // Warn about deposit PIs approaching Stripe 7-day expiry
 Schedule::command(CheckDepositExpiry::class)->dailyAt('08:00');
+
+/*
+|--------------------------------------------------------------------------
+| Seller Settlement — Scheduled Commands
+|--------------------------------------------------------------------------
+*/
+
+// Release sold seller settlements whose release date (auction + 7 days) has passed
+Schedule::command(ReleaseSellerSettlements::class)->dailyAt('00:15');

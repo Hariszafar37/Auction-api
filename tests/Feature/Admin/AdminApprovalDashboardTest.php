@@ -89,6 +89,58 @@ it('filters dashboard records by status', function () {
     $response->assertJsonPath('meta.summary.total', 2);
 });
 
+it('counts POA revision_requested in its own summary bucket and total stays consistent', function () {
+    // One POA in each lifecycle state. `signed` normalizes to pending.
+    $statuses = ['signed', 'approved', 'rejected', 'revision_requested'];
+    foreach ($statuses as $status) {
+        $u = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+        PowerOfAttorney::create(['user_id' => $u->id, 'type' => 'esign', 'status' => $status]);
+    }
+
+    $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=poa');
+
+    $response->assertStatus(200)
+        ->assertJsonPath('meta.summary.pending', 1)
+        ->assertJsonPath('meta.summary.approved', 1)
+        ->assertJsonPath('meta.summary.rejected', 1)
+        ->assertJsonPath('meta.summary.revision_requested', 1)
+        ->assertJsonPath('meta.summary.total', 4);
+
+    // The four status buckets must sum to the total.
+    $s = $response->json('meta.summary');
+    expect($s['pending'] + $s['approved'] + $s['rejected'] + $s['revision_requested'])->toBe($s['total']);
+});
+
+it('filters dashboard records by revision_requested status', function () {
+    $u1 = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+    PowerOfAttorney::create(['user_id' => $u1->id, 'type' => 'esign', 'status' => 'revision_requested']);
+    $u2 = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+    PowerOfAttorney::create(['user_id' => $u2->id, 'type' => 'esign', 'status' => 'signed']);
+
+    $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?status=revision_requested');
+
+    $response->assertStatus(200);
+    $data = $response->json('data');
+    expect($data)->toHaveCount(1)
+        ->and($data[0]['approval_type'])->toBe('poa')
+        ->and($data[0]['status'])->toBe('revision_requested')
+        ->and($data[0]['raw_status'])->toBe('revision_requested');
+});
+
+it('does not add revision_requested to non-POA approval types', function () {
+    // Dealer/business/seller/gov only ever normalize to pending/approved/rejected.
+    apdPendingDealer();
+    apdApprovedSeller();
+
+    $response = $this->actingAs(approvalDashboardAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer');
+
+    $response->assertStatus(200)
+        ->assertJsonPath('meta.summary.revision_requested', 0);
+});
+
 it('filters dashboard records by approval type', function () {
     apdPendingDealer();
     apdApprovedSeller();

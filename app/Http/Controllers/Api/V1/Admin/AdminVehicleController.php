@@ -81,7 +81,7 @@ class AdminVehicleController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => new AdminVehicleResource($vehicle->load(['seller', 'media'])),
+            'data'    => new AdminVehicleResource($vehicle->load(['seller', 'media', 'titleReceivedBy'])),
             'message' => 'Vehicle created successfully.',
         ], 201);
     }
@@ -94,7 +94,7 @@ class AdminVehicleController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => new AdminVehicleResource($vehicle->load(['seller', 'media'])),
+            'data'    => new AdminVehicleResource($vehicle->load(['seller', 'media', 'titleReceivedBy'])),
         ]);
     }
 
@@ -120,7 +120,7 @@ class AdminVehicleController extends Controller
         $vehicle->update($request->validated());
 
         return $this->success(
-            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media'])),
+            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media', 'titleReceivedBy'])),
             'Vehicle updated successfully.',
         );
     }
@@ -182,7 +182,7 @@ class AdminVehicleController extends Controller
         $vehicle->update(['status' => $newStatus]);
 
         return $this->success(
-            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media'])),
+            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media', 'titleReceivedBy'])),
             "Vehicle status updated to '{$newStatus}'.",
         );
     }
@@ -204,7 +204,7 @@ class AdminVehicleController extends Controller
         ]);
 
         return $this->success(
-            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media'])),
+            new AdminVehicleResource($vehicle->fresh()->load(['seller', 'media', 'titleReceivedBy'])),
             'Vehicle title marked as received.'
         );
     }

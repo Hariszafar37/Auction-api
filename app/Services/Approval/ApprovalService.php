@@ -78,10 +78,13 @@ class ApprovalService
         $base = $this->normalizedCollection($filters);
 
         $summary = [
-            'pending'  => $base->where('status', 'pending')->count(),
-            'approved' => $base->where('status', 'approved')->count(),
-            'rejected' => $base->where('status', 'rejected')->count(),
-            'total'    => $base->count(),
+            'pending'            => $base->where('status', 'pending')->count(),
+            'approved'           => $base->where('status', 'approved')->count(),
+            'rejected'           => $base->where('status', 'rejected')->count(),
+            // POA-only lifecycle state — always 0 for other approval types, so
+            // pending + approved + rejected + revision_requested === total holds.
+            'revision_requested' => $base->where('status', 'revision_requested')->count(),
+            'total'              => $base->count(),
         ];
 
         $records = $base;
@@ -362,9 +365,13 @@ class ApprovalService
         $raw = $this->rawStatus($type, $record);
 
         return match ($raw) {
-            'approved' => 'approved',
-            'rejected' => 'rejected',
-            default    => 'pending',
+            'approved'           => 'approved',
+            'rejected'           => 'rejected',
+            // POA-only: a reviewed-and-returned POA is distinct from an
+            // unreviewed one. Other types never carry this raw value, so their
+            // normalization is unchanged.
+            'revision_requested' => 'revision_requested',
+            default              => 'pending',
         };
     }
 

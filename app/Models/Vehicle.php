@@ -108,6 +108,14 @@ class Vehicle extends Model implements HasMedia
         return $this->belongsTo(User::class, 'seller_id');
     }
 
+    /**
+     * The admin who confirmed the physical title was received.
+     */
+    public function titleReceivedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'title_received_by');
+    }
+
     public function auctionLots(): HasMany
     {
         return $this->hasMany(AuctionLot::class);

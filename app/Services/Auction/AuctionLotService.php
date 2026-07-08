@@ -2,18 +2,14 @@
 
 namespace App\Services\Auction;
 
-use App\Enums\BidType;
 use App\Enums\LotStatus;
-use App\Events\Auction\BidPlaced;
+use App\Events\Auction\LotDidNotSell;
 use App\Events\Auction\LotStatusChanged;
 use App\Events\Auction\UserWonLot;
 use App\Jobs\Auction\NotifyAuctionWinner;
-use App\Mail\IfSaleNotificationMail;
 use App\Models\AuctionLot;
-use App\Models\Bid;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class AuctionLotService
@@ -64,8 +60,10 @@ class AuctionLotService
                     'status'    => LotStatus::NoSale,
                     'closed_at' => now(),
                 ]);
-                broadcast(new LotStatusChanged($lot->fresh(), $previous));
-                return $lot->fresh();
+                $fresh = $lot->fresh();
+                broadcast(new LotStatusChanged($fresh, $previous));
+                event(new LotDidNotSell($fresh));
+                return $fresh;
             }
 
             // Reserve not met
@@ -78,8 +76,10 @@ class AuctionLotService
                     'status'    => LotStatus::ReserveNotMet,
                     'closed_at' => now(),
                 ]);
-                broadcast(new LotStatusChanged($lot->fresh(), $previous));
-                return $lot->fresh();
+                $fresh = $lot->fresh();
+                broadcast(new LotStatusChanged($fresh, $previous));
+                event(new LotDidNotSell($fresh));
+                return $fresh;
             }
 
             // Reserve met — check if seller approval required
@@ -128,9 +128,12 @@ class AuctionLotService
 
         $lot->vehicle?->markAsAvailable();
 
-        broadcast(new LotStatusChanged($lot->fresh(), $previous));
+        $fresh = $lot->fresh();
+        broadcast(new LotStatusChanged($fresh, $previous));
+        // Rejected/expired if-sale lot did not sell — trigger the no-sale fee.
+        event(new LotDidNotSell($fresh));
 
-        return $lot->fresh();
+        return $fresh;
     }
 
     /**
@@ -146,69 +149,22 @@ class AuctionLotService
     }
 
     /**
-     * Current winner increases their bid during if_sale.
-     * Resets the seller decision deadline and re-notifies the seller.
+     * If Sale bidding is disabled platform-wide.
+     *
+     * Once a lot's live auction closes and it enters if_sale status, ALL bidding
+     * actions — including a winner increasing their own bid — are rejected. This
+     * method is the authoritative server-side guard: it always throws, so the
+     * behaviour holds even for direct API calls from a client that still exposes
+     * the action (e.g. an un-updated mobile build). The seller now approves or
+     * rejects the if_sale lot at the price reached when the lot closed.
+     *
+     * @throws ValidationException always
      */
     public function increaseIfSaleBid(AuctionLot $lot, User $user, int $amount): AuctionLot
     {
-        return DB::transaction(function () use ($lot, $user, $amount) {
-            $lot = AuctionLot::lockForUpdate()->find($lot->id);
-
-            if ($lot->status !== LotStatus::IfSale) {
-                throw ValidationException::withMessages([
-                    'lot' => ['Lot is not in if_sale status.'],
-                ]);
-            }
-
-            if ($lot->current_winner_id !== $user->id) {
-                throw ValidationException::withMessages([
-                    'lot' => ['Only the current winner can increase the bid.'],
-                ]);
-            }
-
-            $minBid = $lot->nextMinimumBid();
-            if ($amount < $minBid) {
-                throw ValidationException::withMessages([
-                    'amount' => ["Minimum bid is \${$minBid}."],
-                ]);
-            }
-
-            // Deactivate current winning bid
-            Bid::query()
-                ->where('auction_lot_id', $lot->id)
-                ->where('is_winning', true)
-                ->update(['is_winning' => false]);
-
-            $bid = Bid::create([
-                'auction_lot_id' => $lot->id,
-                'user_id'        => $user->id,
-                'amount'         => $amount,
-                'type'           => BidType::Manual,
-                'is_winning'     => true,
-                'ip_address'     => request()->ip(),
-                'placed_at'      => now(),
-            ]);
-
-            $lot->update([
-                'current_bid'              => $amount,
-                'bid_count'                => $lot->bid_count + 1,
-                'seller_notified_at'       => now(),
-                'seller_decision_deadline' => now()->addHours(48),
-            ]);
-
-            $freshLot = $lot->fresh(['vehicle', 'auction']);
-
-            // Broadcast updated bid to lot channel watchers
-            broadcast(new BidPlaced($freshLot, $bid));
-
-            // Re-notify seller of the increased bid
-            if ($freshLot->vehicle?->seller) {
-                Mail::to($freshLot->vehicle->seller->email)
-                    ->send(new IfSaleNotificationMail($freshLot));
-            }
-
-            return $lot->fresh();
-        });
+        throw ValidationException::withMessages([
+            'lot' => ['Bidding is closed for this lot. If Sale bid increases are no longer permitted.'],
+        ]);
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────────
