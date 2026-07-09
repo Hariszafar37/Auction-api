@@ -5,7 +5,15 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Auction;
 use App\Models\Bid;
+use App\Models\BusinessProfile;
+use App\Models\DealerProfile;
+use App\Models\Dispute;
+use App\Models\GovProfile;
 use App\Models\Invoice;
+use App\Models\InvoicePayment;
+use App\Models\PowerOfAttorney;
+use App\Models\SellerProfile;
+use App\Models\SellerSettlement;
 use App\Models\User;
 use App\Models\Vehicle;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -29,7 +37,44 @@ class AdminDashboardController extends Controller
             'total_revenue'   => (float) Invoice::where('status', 'paid')->sum('total_amount'),
             'pending_revenue' => (float) Invoice::whereIn('status', ['pending', 'partial', 'overdue'])->sum('balance_due'),
             'bids'            => Bid::count(),
+            'pending'         => $this->pendingActionCounts(),
         ]);
+    }
+
+    /**
+     * Action-required counts for the admin dashboard's "Needs Attention" section.
+     *
+     * Each value is a live query against the authoritative table, keyed to the exact
+     * status an admin must act on. `user_applications` is the overall onboarding queue
+     * (pending_activation) and intentionally overlaps the dealer/business/government
+     * cards, so it is NOT summed into a grand total here.
+     *
+     * @return array<string,int>
+     */
+    private function pendingActionCounts(): array
+    {
+        return [
+            // Accounts awaiting admin activation (overall onboarding queue).
+            'user_applications'       => User::where('status', 'pending_activation')->count(),
+            // Per-type account applications (profile approval_status = pending).
+            'dealer_applications'     => DealerProfile::where('approval_status', 'pending')->count(),
+            'seller_applications'     => SellerProfile::where('approval_status', 'pending')->count(),
+            'business_applications'   => BusinessProfile::where('approval_status', 'pending')->count(),
+            'government_applications' => GovProfile::where('approval_status', 'pending')->count(),
+            // Power of Attorney documents awaiting review.
+            'poa_approvals'           => PowerOfAttorney::where('status', 'pending')->count(),
+            // Offline payments (cash/check/wire) awaiting admin verification.
+            'payments'                => InvoicePayment::where('status', 'pending_verification')->count(),
+            // Vehicles in the active pipeline whose physical title has not yet been received.
+            'titles'                  => Vehicle::where('has_title', true)
+                ->where('title_received', false)
+                ->whereIn('status', ['available', 'in_auction', 'sold'])
+                ->count(),
+            // Buyer disputes needing a decision.
+            'disputes'                => Dispute::whereIn('status', ['open', 'under_review'])->count(),
+            // Seller settlements whose release date has passed and a check must be issued.
+            'settlements'             => SellerSettlement::where('status', 'ready_for_release')->count(),
+        ];
     }
 
     /**
