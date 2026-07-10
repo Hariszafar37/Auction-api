@@ -33,6 +33,15 @@ class VehicleResource extends JsonResource
             'fuel_type'        => $this->fuel_type,
             'condition_light'  => $this->condition_light,
             'condition_notes'  => $this->condition_notes,
+
+            // Condition report — lightweight metadata only. The report itself is
+            // an externally hosted document, so the lot payload carries just the
+            // availability flag plus the link the buyer opens on demand.
+            // `has_condition_report` is the single flag the UI switches on; see
+            // Vehicle::hasConditionReport().
+            'has_condition_report' => $this->hasConditionReport(),
+            'condition_report_url' => $this->condition_report_url,
+
             'has_title'        => $this->has_title,
             'status'           => $this->status,
 
