@@ -115,4 +115,18 @@ trait CreatesAuctionData
             'seller_decision_deadline' => now()->addHours(48),
         ], $overrides));
     }
+
+    /**
+     * Create an IfSale lot whose vehicle belongs to $seller, with a throw-away winner.
+     * Used by the seller-facing if_sale decision tests, where ownership is the subject.
+     */
+    protected function createIfSaleLotForSeller(User $seller, array $overrides = []): AuctionLot
+    {
+        $vehicle = $this->createVehicle($seller);
+
+        return $this->createIfSaleLot(
+            User::factory()->create(['status' => 'active']),
+            array_merge(['vehicle_id' => $vehicle->id], $overrides),
+        );
+    }
 }

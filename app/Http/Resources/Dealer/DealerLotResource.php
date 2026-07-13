@@ -24,6 +24,14 @@ class DealerLotResource extends JsonResource
             'sold_price'   => $this->sold_price,
             'dealer_only'  => $this->dealer_only,
 
+            // If Sale decision fields. This resource is only ever returned to the
+            // seller who owns the vehicle, so the reserve price — hidden from bidders
+            // in AuctionLotResource — is safe to expose here: it is their own number.
+            'requires_seller_approval' => $this->requires_seller_approval,
+            'reserve_price'            => $this->reserve_price,
+            'seller_decision_deadline' => $this->safeIso($this->seller_decision_deadline),
+            'seller_approved_at'       => $this->safeIso($this->seller_approved_at),
+
             // Null-safe: guards against orphaned lots where the related vehicle
             // or auction was removed without cascading to the lot record.
             'vehicle' => $this->vehicle ? [
