@@ -36,6 +36,7 @@ class AdminVehicleResource extends JsonResource
             'drivetrain'       => $this->drivetrain,
             'condition_light'      => $this->condition_light,
             'condition_notes'      => $this->condition_notes,
+            'has_condition_report' => $this->hasConditionReport(),
             'condition_report_url' => $this->condition_report_url,
             'additional_info'      => $this->additional_info,
             'has_title'            => $this->has_title,
