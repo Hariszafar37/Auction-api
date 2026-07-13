@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerDashboardController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerVehicleMediaController;
+use App\Http\Controllers\Api\V1\Dealer\SellerLotDecisionController;
 use App\Http\Controllers\Api\V1\Seller\SellerApplicationController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\User\PaymentMethodController;
@@ -272,6 +273,17 @@ Route::prefix('v1')->group(function () {
         Route::prefix('my/dealer')->name('my.dealer.')->middleware('role:dealer')->group(function () {
             Route::get('/dashboard', [DealerDashboardController::class, 'dashboard'])->name('dashboard');
             Route::get('/lots',      [DealerDashboardController::class, 'lots'])->name('lots');
+        });
+
+        // My lots — "If Sale" seller decision flow.
+        // Gated on permission:inventory.create (not role:dealer) so approved individual
+        // sellers reach it too, mirroring my/vehicles below. Ownership of each lot is
+        // enforced per-request in the controller/service, not by this middleware.
+        Route::prefix('my/lots')->name('my.lots.')->middleware('permission:inventory.create')->group(function () {
+            Route::get('/pending-decision',        [SellerLotDecisionController::class, 'pending'])->name('pending-decision');
+            Route::get('/{lot}/bids',              [SellerLotDecisionController::class, 'bids'])->name('bids');
+            Route::post('/{lot}/if-sale/approve',  [SellerLotDecisionController::class, 'approve'])->name('if-sale.approve');
+            Route::post('/{lot}/if-sale/reject',   [SellerLotDecisionController::class, 'reject'])->name('if-sale.reject');
         });
 
         // My compliance documents (any authenticated user)
