@@ -15,7 +15,12 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    // 'broadcasting/auth' authorizes Echo's PRIVATE channel subscriptions
+    // (e.g. App.Models.User.{id} for the notification bell). It does not live
+    // under 'api/*', so without it here the cross-origin preflight returns no
+    // Access-Control-Allow-Origin and the browser blocks every private
+    // subscription — realtime notifications silently never arrive.
+    'paths' => ['api/*', 'broadcasting/auth', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 

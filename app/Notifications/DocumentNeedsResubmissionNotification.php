@@ -22,7 +22,7 @@ class DocumentNeedsResubmissionNotification extends Notification implements Shou
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
