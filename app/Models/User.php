@@ -324,6 +324,87 @@ class User extends Authenticatable implements MustVerifyEmail
         return null;
     }
 
+    // ── Attention / action-required helpers ───────────────────────────────────
+
+    /**
+     * Outstanding items the user must act on: rejected documents, a rejected or
+     * revision-requested Power of Attorney, and rejected dealer/business/seller
+     * applications. Backs the persistent "action required" dashboard banner, so
+     * each entry carries its own copy and a deep link to where it is resolved.
+     *
+     * Only ever computed for the authenticated user's own resource (see
+     * UserResource) — the extra queries must not run per-row on admin user lists.
+     *
+     * @return array<int, array<string, string|null>>
+     */
+    public function getNeedsAttention(): array
+    {
+        $items = [];
+
+        $documentCount = $this->documents()
+            ->whereIn('status', ['rejected', 'needs_resubmission'])
+            ->count();
+
+        if ($documentCount > 0) {
+            $items[] = [
+                'key'          => 'documents',
+                'severity'     => 'error',
+                'title'        => $documentCount === 1
+                    ? 'A document needs your attention'
+                    : "{$documentCount} documents need your attention",
+                'message'      => 'Your documents were rejected. Review the reason and resubmit the required documents.',
+                'action_url'   => '/my/documents',
+                'action_label' => 'My Documents',
+            ];
+        }
+
+        $poa = $this->powerOfAttorneys()
+            ->whereIn('status', ['rejected', 'revision_requested'])
+            ->latest('id')
+            ->first();
+
+        if ($poa) {
+            $items[] = [
+                'key'          => 'power_of_attorney',
+                'severity'     => 'error',
+                'title'        => $poa->status === 'revision_requested'
+                    ? 'Your Power of Attorney needs revision'
+                    : 'Your Power of Attorney was rejected',
+                'message'      => $poa->admin_notes
+                    ?: 'Review the reason and re-submit your Power of Attorney to continue selling.',
+                'action_url'   => '/activation/power-of-attorney',
+                'action_label' => 'Resubmit',
+            ];
+        }
+
+        // Rejected applications. Each profile is a HasOne, so at most one of each.
+        $applications = [
+            ['relation' => 'dealerProfile',   'key' => 'dealer_application',   'label' => 'dealer application'],
+            ['relation' => 'businessProfile', 'key' => 'business_application', 'label' => 'business application'],
+            ['relation' => 'sellerProfile',   'key' => 'seller_application',   'label' => 'seller application'],
+        ];
+
+        foreach ($applications as $application) {
+            $profile = $this->{$application['relation']};
+
+            if ($profile?->approval_status !== 'rejected') {
+                continue;
+            }
+
+            $items[] = [
+                'key'          => $application['key'],
+                'severity'     => 'error',
+                'title'        => 'Your ' . $application['label'] . ' was rejected',
+                'message'      => $profile->rejection_reason
+                    ?: 'Review the reason and contact support to reapply.',
+                'action_url'   => '/profile',
+                'action_label' => 'View Details',
+            ];
+        }
+
+        return $items;
+    }
+
     // ── Compliance helpers ────────────────────────────────────────────────────
 
     /**

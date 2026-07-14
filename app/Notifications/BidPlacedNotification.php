@@ -25,7 +25,7 @@ class BidPlacedNotification extends Notification implements ShouldQueue
 
     public function via(mixed $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
