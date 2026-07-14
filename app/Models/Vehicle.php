@@ -184,6 +184,20 @@ class Vehicle extends Model implements HasMedia
         return $this->status === 'available';
     }
 
+    /**
+     * Authoritative "is a condition report viewable?" rule.
+     *
+     * The report is an externally hosted document referenced by
+     * condition_report_url. There is no draft/published lifecycle, so
+     * availability is simply "a non-empty URL is on file". Resources and the
+     * frontend must consult this rather than testing the URL themselves, so a
+     * future status column or versioned report model only changes this method.
+     */
+    public function hasConditionReport(): bool
+    {
+        return filled($this->condition_report_url);
+    }
+
     public function markAsInAuction(): void
     {
         $this->update(['status' => 'in_auction']);

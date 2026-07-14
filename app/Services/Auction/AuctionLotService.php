@@ -9,6 +9,8 @@ use App\Events\Auction\UserWonLot;
 use App\Jobs\Auction\NotifyAuctionWinner;
 use App\Models\AuctionLot;
 use App\Models\User;
+use App\Notifications\LotAwaitingSellerDecision;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -94,14 +96,14 @@ class AuctionLotService
 
     /**
      * Admin/seller approves an if_sale lot.
+     *
+     * $actor is optional: admin callers pass null (the route's role:admin middleware
+     * is the authority). Seller callers pass the authenticated user, which enforces
+     * that they own the vehicle behind the lot.
      */
-    public function approveIfSale(AuctionLot $lot): AuctionLot
+    public function approveIfSale(AuctionLot $lot, ?User $actor = null): AuctionLot
     {
-        if ($lot->status !== LotStatus::IfSale) {
-            throw ValidationException::withMessages([
-                'lot' => ['Lot is not in if_sale status.'],
-            ]);
-        }
+        $this->assertCanDecide($lot, $actor);
 
         $previous = $lot->status->value;
 
@@ -111,13 +113,9 @@ class AuctionLotService
     /**
      * Admin/seller rejects an if_sale lot.
      */
-    public function rejectIfSale(AuctionLot $lot): AuctionLot
+    public function rejectIfSale(AuctionLot $lot, ?User $actor = null): AuctionLot
     {
-        if ($lot->status !== LotStatus::IfSale) {
-            throw ValidationException::withMessages([
-                'lot' => ['Lot is not in if_sale status.'],
-            ]);
-        }
+        $this->assertCanDecide($lot, $actor);
 
         $previous = $lot->status->value;
 
@@ -169,6 +167,33 @@ class AuctionLotService
 
     // ─── Private helpers ─────────────────────────────────────────────────────────
 
+    /**
+     * Guard shared by approveIfSale() / rejectIfSale().
+     *
+     * The lot must be awaiting a decision, and — when an $actor is supplied — that
+     * actor must either be an admin or the seller who owns the vehicle. Passing no
+     * actor skips the ownership check, which is what the admin routes rely on.
+     *
+     * @throws ValidationException   lot is not in if_sale status
+     * @throws AuthorizationException actor does not own the lot
+     */
+    private function assertCanDecide(AuctionLot $lot, ?User $actor): void
+    {
+        if ($lot->status !== LotStatus::IfSale) {
+            throw ValidationException::withMessages([
+                'lot' => ['Lot is not in if_sale status.'],
+            ]);
+        }
+
+        if ($actor === null || $actor->hasRole('admin')) {
+            return;
+        }
+
+        if ($lot->vehicle?->seller_id !== $actor->id) {
+            throw new AuthorizationException('You do not own the vehicle for this lot.');
+        }
+    }
+
     private function triggerIfSale(AuctionLot $lot, string $previous): AuctionLot
     {
         $lot->update([
@@ -186,6 +211,10 @@ class AuctionLotService
         if ($lot->vehicle?->seller) {
             \Illuminate\Support\Facades\Mail::to($lot->vehicle->seller->email)
                 ->send(new \App\Mail\IfSaleNotificationMail($lot));
+
+            // In-app companion to the email above, so the decision also surfaces in
+            // the seller's notification bell. Database-only — the email is already sent.
+            $lot->vehicle->seller->notify(new LotAwaitingSellerDecision($lot->fresh()));
         }
 
         return $lot->fresh();
