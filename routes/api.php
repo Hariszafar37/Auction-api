@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\V1\Auction\AuctionTermsController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionTermsController;
 use App\Http\Controllers\Api\V1\Admin\AdminNotificationTemplateController;
+use App\Http\Controllers\Api\V1\Admin\AdminAnnouncementController;
 use App\Http\Controllers\Api\V1\PowerOfAttorneyController;
 use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerDashboardController;
@@ -523,6 +524,17 @@ Route::prefix('v1')->group(function () {
                 Route::patch('/{template}',        [AdminNotificationTemplateController::class, 'update'])->name('update');
                 Route::post('/{template}/preview', [AdminNotificationTemplateController::class, 'preview'])->name('preview');
                 Route::post('/{template}/reset',   [AdminNotificationTemplateController::class, 'reset'])->name('reset');
+            });
+
+            // Announcements — admin-composed messages sent manually to an audience.
+            Route::prefix('announcements')->name('announcements.')->group(function () {
+                Route::get('/',                        [AdminAnnouncementController::class, 'index'])->name('index');
+                Route::post('/',                       [AdminAnnouncementController::class, 'store'])->name('store');
+                Route::get('/{announcement}',          [AdminAnnouncementController::class, 'show'])->name('show');
+                Route::patch('/{announcement}',        [AdminAnnouncementController::class, 'update'])->name('update');
+                Route::delete('/{announcement}',       [AdminAnnouncementController::class, 'destroy'])->name('destroy');
+                Route::post('/{announcement}/send',    [AdminAnnouncementController::class, 'send'])->name('send');
+                Route::post('/{announcement}/preview', [AdminAnnouncementController::class, 'preview'])->name('preview');
             });
 
             // Auction Terms & Conditions — master document + acceptance log.

@@ -3,18 +3,25 @@
 namespace App\Models;
 
 use App\Support\NotificationTemplateDefaults;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
- * Editable copy + channel switches for one notification variant.
+ * Editable copy + channel switches for a notification.
  *
- * Read with NotificationTemplate::forKey('account_approved.dealer'). A missing row
- * is created from NotificationTemplateDefaults, so the app never hits a
- * missing-config state — the same guarantee PaymentSetting::current() gives.
+ * Two categories share this table:
+ *   - 'system'       — one persistent row per notification the app fires. Read with
+ *                      forKey('account_approved.dealer'); a missing row seeds itself
+ *                      from NotificationTemplateDefaults.
+ *   - 'announcement' — an admin-composed message sent manually to an audience. Has a
+ *                      generated key, an `audience`, and a `sent_at` (null = draft).
  */
 class NotificationTemplate extends Model
 {
+    public const CATEGORY_SYSTEM       = 'system';
+    public const CATEGORY_ANNOUNCEMENT = 'announcement';
     protected $fillable = [
         'key',
         'group_key',
@@ -120,6 +127,56 @@ class NotificationTemplate extends Model
         }
 
         return $channels;
+    }
+
+    // ── Scopes ────────────────────────────────────────────────────────────────
+
+    /** @param Builder<self> $query */
+    public function scopeSystem(Builder $query): Builder
+    {
+        return $query->where('category', self::CATEGORY_SYSTEM);
+    }
+
+    /** @param Builder<self> $query */
+    public function scopeAnnouncements(Builder $query): Builder
+    {
+        return $query->where('category', self::CATEGORY_ANNOUNCEMENT);
+    }
+
+    // ── Announcements ─────────────────────────────────────────────────────────
+
+    public function isAnnouncement(): bool
+    {
+        return $this->category === self::CATEGORY_ANNOUNCEMENT;
+    }
+
+    /** A draft announcement has not been sent yet, so it may still be edited or deleted. */
+    public function isDraft(): bool
+    {
+        return $this->isAnnouncement() && $this->sent_at === null;
+    }
+
+    /**
+     * Create a draft announcement. All fields are content the admin supplies; the
+     * key is generated (announcements are not looked up by a stable key like system
+     * templates are), and channels default to all-on.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public static function createAnnouncement(array $attributes): self
+    {
+        return static::query()->create([
+            'key'                 => 'announcement.' . Str::ulid(),
+            'group_key'           => self::CATEGORY_ANNOUNCEMENT,
+            'notification_type'   => self::CATEGORY_ANNOUNCEMENT,
+            'category'            => self::CATEGORY_ANNOUNCEMENT,
+            'enabled'             => true,
+            'email_enabled'       => true,
+            'in_app_enabled'      => true,
+            'available_variables' => NotificationTemplateDefaults::COMMON_VARIABLES,
+            'supported_channels'  => NotificationTemplateDefaults::CHANNELS_ALL,
+            ...$attributes,
+        ]);
     }
 
     public function updatedBy(): BelongsTo
