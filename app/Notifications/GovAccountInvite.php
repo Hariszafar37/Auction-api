@@ -2,37 +2,41 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\RendersFromTemplate;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Sent to government/charity/repo accounts when admin issues an invitation.
+ *
+ * Mail-only. The invite URL is built here, never in the template — a mistyped link
+ * in admin-authored copy would silently break account setup.
  */
 class GovAccountInvite extends Notification
 {
-    use Queueable;
+    use Queueable, RendersFromTemplate;
 
     public function __construct(
         private readonly string $inviteToken,
     ) {}
 
-    public function via(mixed $notifiable): array
+    protected function templateKey(): string
     {
-        return ['mail'];
+        return 'gov_account_invite';
     }
 
-    public function toMail(mixed $notifiable): MailMessage
+    protected function templateVariables(mixed $notifiable): array
     {
-        $frontendUrl = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
-        $inviteUrl   = "{$frontendUrl}/accept-invite?token={$this->inviteToken}";
+        return [];
+    }
 
-        return (new MailMessage)
-            ->subject('You have been invited to join Colonial Auction Services, Inc.')
-            ->greeting('Hello!')
-            ->line('An administrator has created a government/organization account for you on Colonial Auction Services, Inc..')
-            ->line('Click the button below to accept your invitation and set up your password.')
-            ->action('Accept Invitation', $inviteUrl)
-            ->line('If you were not expecting this invitation, you may safely ignore this email.');
+    protected function actionPayload(): array
+    {
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+
+        return [
+            'action_url' => "{$frontendUrl}/accept-invite?token={$this->inviteToken}",
+            'meta'       => [],
+        ];
     }
 }

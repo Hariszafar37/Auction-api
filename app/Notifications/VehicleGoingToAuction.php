@@ -4,45 +4,52 @@ namespace App\Notifications;
 
 use App\Models\Auction;
 use App\Models\Vehicle;
+use App\Notifications\Concerns\RendersFromTemplate;
 use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Sent to users who subscribed to a "Notify Me" alert on a vehicle.
  * Fires when the vehicle is submitted to an auction (status → in_auction).
+ *
+ * Mail-only. The VIN and Location lines drop out automatically when those values
+ * are empty — see NotificationTemplateRenderer::renderBodyLines().
  */
 class VehicleGoingToAuction extends Notification
 {
-    use Queueable;
+    use Queueable, RendersFromTemplate;
 
     public function __construct(
         private readonly Vehicle $vehicle,
         private readonly Auction $auction,
     ) {}
 
-    public function via(mixed $notifiable): array
+    protected function templateKey(): string
     {
-        return ['mail'];
+        return 'vehicle_going_to_auction';
     }
 
-    public function toMail(mixed $notifiable): MailMessage
+    protected function templateVariables(mixed $notifiable): array
     {
-        $vehicleTitle   = "{$this->vehicle->year} {$this->vehicle->make} {$this->vehicle->model}";
-        $auctionDate    = $this->auction->starts_at?->format('F j, Y \a\t g:i A T') ?? 'TBD';
-        $frontendUrl    = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
-        $inventoryUrl   = "{$frontendUrl}/inventory/{$this->vehicle->id}";
+        return [
+            'vehicle_name'     => "{$this->vehicle->year} {$this->vehicle->make} {$this->vehicle->model}",
+            'vin'              => $this->vehicle->vin,
+            'auction_title'    => $this->auction->title,
+            'auction_location' => $this->auction->location,
+            'auction_date'     => $this->auction->starts_at?->format('F j, Y \a\t g:i A T') ?? 'TBD',
+        ];
+    }
 
-        return (new MailMessage)
-            ->subject("Vehicle Going to Auction: {$vehicleTitle}")
-            ->greeting('Good news!')
-            ->line("A vehicle you're watching has been listed in an upcoming auction.")
-            ->line("**{$vehicleTitle}**")
-            ->when($this->vehicle->vin, fn ($m) => $m->line("VIN: {$this->vehicle->vin}"))
-            ->line("**Auction:** {$this->auction->title}")
-            ->when($this->auction->location, fn ($m) => $m->line("**Location:** {$this->auction->location}"))
-            ->line("**Date:** {$auctionDate}")
-            ->action('View Vehicle', $inventoryUrl)
-            ->line('You received this email because you subscribed to notifications for this vehicle.');
+    protected function actionPayload(): array
+    {
+        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
+
+        return [
+            'action_url' => "{$frontendUrl}/inventory/{$this->vehicle->id}",
+            'meta'       => [
+                'vehicle_id' => $this->vehicle->id,
+                'auction_id' => $this->auction->id,
+            ],
+        ];
     }
 }

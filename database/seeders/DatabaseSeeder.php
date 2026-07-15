@@ -35,6 +35,9 @@ class DatabaseSeeder extends Seeder
 
             // 9. Auction entry Terms & Conditions v1.0 (no dependencies)
             AuctionTermsSeeder::class,
+
+            // 10. Notification template copy + channel switches (no dependencies)
+            NotificationTemplateSeeder::class,
         ]);
     }
 }

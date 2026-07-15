@@ -2,19 +2,21 @@
 
 namespace App\Notifications;
 
-use App\Notifications\Concerns\HasBroadcastPayload;
+use App\Notifications\Concerns\RendersFromTemplate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Sent to users when their account application is rejected by an admin.
- * Covers dealer, business, individual seller, and government account types.
+ * Covers dealer, business, individual seller, and government account types —
+ * each is its own template variant, because the copy differs per context.
  */
 class AccountRejectedNotification extends Notification implements ShouldQueue
 {
-    use Queueable, HasBroadcastPayload;
+    use Queueable, RendersFromTemplate;
+
+    private const CONTEXTS = ['dealer', 'business', 'seller', 'government'];
 
     /**
      * @param string|null $reason  Admin-provided rejection reason (may be null for some flows)
@@ -25,78 +27,44 @@ class AccountRejectedNotification extends Notification implements ShouldQueue
         private readonly string  $context,
     ) {}
 
-    public function via(mixed $notifiable): array
+    protected function templateKey(): string
     {
-        return ['mail', 'database', 'broadcast'];
+        $variant = in_array($this->context, self::CONTEXTS, true) ? $this->context : 'default';
+
+        return "account_rejected.{$variant}";
     }
 
-    public function toMail(mixed $notifiable): MailMessage
+    protected function templateVariables(mixed $notifiable): array
     {
-        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
-
-        [$subject, $body, $nextStep] = match ($this->context) {
-            'dealer' => [
-                'Your Dealer Application Was Not Approved',
-                'Thank you for applying to become a dealer on Colonial Auction Services, Inc.. After reviewing your application, we are unable to approve it at this time.',
-                'If you believe this was an error or have additional documentation, please contact our support team.',
-            ],
-            'business' => [
-                'Your Business Account Application Was Not Approved',
-                'Thank you for submitting your business account application. After reviewing it, we are unable to approve it at this time.',
-                'Please contact our support team if you have questions or wish to reapply.',
-            ],
-            'seller' => [
-                'Your Seller Application Was Not Approved',
-                'Thank you for applying to sell on Colonial Auction Services, Inc.. After reviewing your application, we are unable to grant seller access at this time.',
-                'Your buyer account remains active. You can contact us to discuss your application or reapply in the future.',
-            ],
-            'government' => [
-                'Your Government Account Application Was Not Approved',
-                'Thank you for your interest in Colonial Auction Services, Inc.. After reviewing your government account application, we are unable to approve it at this time.',
-                'Please contact our support team if you have questions.',
-            ],
-            default => [
-                'Your Application Was Not Approved',
-                'After reviewing your application, we are unable to approve it at this time.',
-                'Please contact our support team if you have questions.',
-            ],
-        };
-
-        $mail = (new MailMessage)
-            ->subject($subject)
-            ->greeting('Hello ' . ($notifiable->first_name ?? $notifiable->name) . ',')
-            ->line($body);
-
-        if ($this->reason) {
-            $mail->line('**Reason:** ' . $this->reason);
-        }
-
-        return $mail
-            ->line($nextStep)
-            ->action('Contact Support', "{$frontendUrl}/dashboard")
-            ->line('We appreciate your understanding.');
+        return ['reason' => $this->reason];
     }
 
-    public function toDatabase(mixed $notifiable): array
+    protected function actionPayload(): array
     {
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
-
-        $titles = [
-            'dealer'     => 'Dealer application not approved',
-            'business'   => 'Business account application not approved',
-            'seller'     => 'Seller application not approved',
-            'government' => 'Government account application not approved',
-        ];
 
         return [
-            'type'       => 'account_rejected',
-            'title'      => $titles[$this->context] ?? 'Application not approved',
-            'message'    => $this->reason ?? 'Your application could not be approved at this time.',
             'action_url' => "{$frontendUrl}/dashboard",
             'meta'       => [
                 'context' => $this->context,
                 'reason'  => $this->reason,
             ],
         ];
+    }
+
+    /**
+     * The in-app message defaults to the admin's reason. When no reason was given
+     * the {{reason}} placeholder renders empty, so fall back to a generic line
+     * rather than showing the user a blank notification.
+     */
+    public function toDatabase(mixed $notifiable): array
+    {
+        $payload = $this->renderDatabasePayload($notifiable);
+
+        if (trim((string) $payload['message']) === '') {
+            $payload['message'] = 'Your application could not be approved at this time.';
+        }
+
+        return $payload;
     }
 }

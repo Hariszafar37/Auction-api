@@ -3,61 +3,46 @@
 namespace App\Notifications;
 
 use App\Models\AuctionLot;
-use App\Notifications\Concerns\HasBroadcastPayload;
+use App\Notifications\Concerns\DescribesLot;
+use App\Notifications\Concerns\RendersFromTemplate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Sent to the winning bidder when an auction lot is closed.
+ *
+ * The template's supported channels exclude 'mail' on purpose: the
+ * NotifyAuctionWinner job already sends AuctionWonMail, so enabling email here
+ * would double-email the winner. The admin UI greys the email toggle out for it.
  */
 class AuctionWonNotification extends Notification implements ShouldQueue
 {
-    use Queueable, HasBroadcastPayload;
+    use Queueable, RendersFromTemplate, DescribesLot;
 
     public function __construct(
         private readonly AuctionLot $lot,
     ) {}
 
-    public function via(mixed $notifiable): array
+    protected function templateKey(): string
     {
-        // 'mail' intentionally excluded: NotifyAuctionWinner job (AuctionWonMail) already
-        // handles the winner email. This notification covers only database + realtime broadcast.
-        return ['database', 'broadcast'];
+        return 'auction_won';
     }
 
-    public function toMail(mixed $notifiable): MailMessage
+    protected function templateVariables(mixed $notifiable): array
     {
-        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
-        $vehicle     = $this->lot->vehicle;
-        $vehicleName = $vehicle
-            ? "{$vehicle->year} {$vehicle->make} {$vehicle->model}"
-            : "Lot {$this->lot->lot_number}";
-
-        return (new MailMessage)
-            ->subject("Congratulations! You Won {$vehicleName}")
-            ->greeting('Hello ' . ($notifiable->first_name ?? $notifiable->name) . ',')
-            ->line("You won the auction for **{$vehicleName}** (Lot {$this->lot->lot_number}).")
-            ->line('**Winning bid: $' . number_format((int) $this->lot->sold_price ?? $this->lot->current_bid) . '**')
-            ->line('Our team will be in touch shortly with next steps for payment and vehicle pickup.')
-            ->action('View Won Items', "{$frontendUrl}/won")
-            ->line('Thank you for participating in the auction!');
+        return [
+            'vehicle_name' => $this->vehicleName($this->lot),
+            'lot_number'   => $this->lot->lot_number,
+            'amount'       => $this->money($this->lot->sold_price ?? $this->lot->current_bid),
+        ];
     }
 
-    public function toDatabase(mixed $notifiable): array
+    protected function actionPayload(): array
     {
-        $vehicle     = $this->lot->vehicle;
-        $vehicleName = $vehicle
-            ? "{$vehicle->year} {$vehicle->make} {$vehicle->model}"
-            : "Lot {$this->lot->lot_number}";
-
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
 
         return [
-            'type'       => 'auction_won',
-            'title'      => 'You won the auction!',
-            'message'    => "Congratulations! You won {$vehicleName} — Lot {$this->lot->lot_number}.",
             'action_url' => "{$frontendUrl}/won",
             'meta'       => [
                 'lot_id'     => $this->lot->id,
