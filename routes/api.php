@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\V1\Auction\AuctionController;
 use App\Http\Controllers\Api\V1\Auction\AuctionTermsController;
 use App\Http\Controllers\Api\V1\Auction\BidController;
 use App\Http\Controllers\Api\V1\Admin\AdminAuctionTermsController;
+use App\Http\Controllers\Api\V1\Admin\AdminNotificationTemplateController;
 use App\Http\Controllers\Api\V1\PowerOfAttorneyController;
 use App\Http\Controllers\Api\V1\Vehicle\VehicleController;
 use App\Http\Controllers\Api\V1\Dealer\DealerDashboardController;
@@ -512,6 +513,16 @@ Route::prefix('v1')->group(function () {
             Route::prefix('payment-settings')->name('payment-settings.')->middleware('permission:payments.manage')->group(function () {
                 Route::get('/',  [AdminPaymentSettingController::class, 'show'])->name('show');
                 Route::put('/',  [AdminPaymentSettingController::class, 'update'])->name('update');
+            });
+
+            // Notification templates — admin-editable copy + per-type channel switches
+            // for every system notification.
+            Route::prefix('notification-templates')->name('notification-templates.')->group(function () {
+                Route::get('/',                    [AdminNotificationTemplateController::class, 'index'])->name('index');
+                Route::get('/{template}',          [AdminNotificationTemplateController::class, 'show'])->name('show');
+                Route::patch('/{template}',        [AdminNotificationTemplateController::class, 'update'])->name('update');
+                Route::post('/{template}/preview', [AdminNotificationTemplateController::class, 'preview'])->name('preview');
+                Route::post('/{template}/reset',   [AdminNotificationTemplateController::class, 'reset'])->name('reset');
             });
 
             // Auction Terms & Conditions — master document + acceptance log.

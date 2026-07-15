@@ -3,10 +3,10 @@
 namespace App\Notifications;
 
 use App\Models\AuctionLot;
-use App\Notifications\Concerns\HasBroadcastPayload;
+use App\Notifications\Concerns\DescribesLot;
+use App\Notifications\Concerns\RendersFromTemplate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -16,47 +16,32 @@ use Illuminate\Notifications\Notification;
  */
 class BidPlacedNotification extends Notification implements ShouldQueue
 {
-    use Queueable, HasBroadcastPayload;
+    use Queueable, RendersFromTemplate, DescribesLot;
 
     public function __construct(
         private readonly AuctionLot $lot,
         private readonly int        $bidAmount,
     ) {}
 
-    public function via(mixed $notifiable): array
+    protected function templateKey(): string
     {
-        return ['mail', 'database', 'broadcast'];
+        return 'bid_placed';
     }
 
-    public function toMail(mixed $notifiable): MailMessage
+    protected function templateVariables(mixed $notifiable): array
     {
-        $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
-        $vehicle     = $this->lot->vehicle;
-        $vehicleName = $vehicle
-            ? "{$vehicle->year} {$vehicle->make} {$vehicle->model}"
-            : "Lot {$this->lot->lot_number}";
-
-        return (new MailMessage)
-            ->subject("A Bid Has Been Placed on {$vehicleName}")
-            ->greeting('Hello ' . ($notifiable->first_name ?? $notifiable->name) . ',')
-            ->line("A bid of **\$" . number_format($this->bidAmount) . "** has been placed on **{$vehicleName}** (Lot {$this->lot->lot_number}).")
-            ->action('View Auction', "{$frontendUrl}/auctions/{$this->lot->auction_id}")
-            ->line('You will be notified again when the auction concludes.');
+        return [
+            'vehicle_name' => $this->vehicleName($this->lot),
+            'lot_number'   => $this->lot->lot_number,
+            'amount'       => $this->money($this->bidAmount),
+        ];
     }
 
-    public function toDatabase(mixed $notifiable): array
+    protected function actionPayload(): array
     {
-        $vehicle     = $this->lot->vehicle;
-        $vehicleName = $vehicle
-            ? "{$vehicle->year} {$vehicle->make} {$vehicle->model}"
-            : "Lot {$this->lot->lot_number}";
-
         $frontendUrl = rtrim(config('app.frontend_url', 'http://localhost:3000'), '/');
 
         return [
-            'type'       => 'bid_placed',
-            'title'      => 'A bid was placed on your vehicle',
-            'message'    => "A bid of \$" . number_format($this->bidAmount) . " was placed on {$vehicleName}.",
             'action_url' => "{$frontendUrl}/auctions/{$this->lot->auction_id}",
             'meta'       => [
                 'lot_id'     => $this->lot->id,
