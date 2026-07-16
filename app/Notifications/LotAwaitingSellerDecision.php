@@ -12,9 +12,9 @@ use Illuminate\Notifications\Notification;
  * Sent to the vehicle seller when one of their lots closes into "If Sale" and now
  * needs an approve/reject decision within the 48-hour window.
  *
- * Database-only on purpose: AuctionLotService::triggerIfSale() already sends the
- * seller IfSaleNotificationMail, so adding the 'mail' channel here would double-email.
- * This exists so the pending decision also appears in the in-app notification bell.
+ * No 'mail' channel on purpose: AuctionLotService::triggerIfSale() already sends the
+ * seller IfSaleNotificationMail, so adding it here would double-email. The 'database'
+ * channel backs the notification bell; 'broadcast' pushes it there without a refresh.
  */
 class LotAwaitingSellerDecision extends Notification implements ShouldQueue
 {
@@ -26,7 +26,7 @@ class LotAwaitingSellerDecision extends Notification implements ShouldQueue
 
     public function via(mixed $notifiable): array
     {
-        return ['database'];
+        return ['database', 'broadcast'];
     }
 
     public function toDatabase(mixed $notifiable): array
