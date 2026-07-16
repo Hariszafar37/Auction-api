@@ -54,6 +54,16 @@ class UserResource extends JsonResource
             'bidding_enabled'           => (bool) $this->bidding_enabled,
             'selling_enabled'           => (bool) $this->selling_enabled,
 
+            // Outstanding items the user must act on (rejected documents /
+            // POA / applications). Drives the persistent "action required"
+            // dashboard banner. Only computed when a user is fetching their
+            // OWN resource (i.e. /auth/me) — including it unconditionally
+            // would fire the underlying queries per row on admin user lists.
+            'needs_attention'         => $this->when(
+                $request->user()?->id === $this->id,
+                fn () => $this->getNeedsAttention(),
+            ),
+
             // Step data (loaded on demand)
             'account_information'     => $this->whenLoaded('accountInformation', fn () => $this->accountInformation ? [
                 'date_of_birth'      => $this->accountInformation->date_of_birth?->toDateString(),
