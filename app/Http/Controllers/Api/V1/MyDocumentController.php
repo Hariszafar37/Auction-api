@@ -50,6 +50,8 @@ class MyDocumentController extends Controller
      */
     public function reupload(Request $request, UserDocument $document): JsonResponse
     {
+        $user = $request->user();
+
         // Ownership check — user may only reupload their own documents.
         Gate::authorize('view', $document);
 
