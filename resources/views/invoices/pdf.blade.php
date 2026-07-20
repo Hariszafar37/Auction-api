@@ -43,7 +43,7 @@
     <div>
         <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/colonial-logo.png'))) }}"
              alt="Colonial Auction Services, Inc."
-             style="height:42px; background:#fff; padding:5px 8px; border-radius:6px;">
+             style="height:56px; background:#fff; padding:5px 8px; border-radius:6px;">
         <p style="font-size:11px; color:#94a3b8; margin-top:8px;">INVOICE</p>
     </div>
     <div class="invoice-meta">
