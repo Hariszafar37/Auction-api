@@ -62,7 +62,7 @@
 <div class="header">
     <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/colonial-logo.png'))) }}"
          alt="Colonial Auction Services, Inc."
-         style="height:42px; background:#fff; padding:5px 8px; border-radius:6px; margin-bottom:8px;">
+         style="height:56px; background:#fff; padding:5px 8px; border-radius:6px; margin-bottom:8px;">
     <p>GATE PASS — VEHICLE RELEASE DOCUMENT</p>
 </div>
 
