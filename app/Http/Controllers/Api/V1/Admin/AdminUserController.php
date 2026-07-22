@@ -49,9 +49,21 @@ class AdminUserController extends Controller
 
     /**
      * GET /api/v1/admin/users
+     *
+     * Sorting is deliberately never left to the database. Without an explicit
+     * ORDER BY, MySQL is free to return rows in any order it likes, and that
+     * order may differ between the LIMIT/OFFSET windows that back each page —
+     * so a row could legitimately never appear on any page while still being
+     * returned by a narrower filtered/search query. That is exactly how newly
+     * activated users went missing from the default listing. `-created_at`
+     * gives the newest-first default the admin UI expects, and the trailing
+     * `id` tiebreaker keeps paging stable when timestamps collide (bulk
+     * imports and seeders create many users within the same second).
      */
     public function index(Request $request): JsonResponse
     {
+        $perPage = max(1, min($request->integer('per_page', 20), 100));
+
         $users = QueryBuilder::for(User::class)
             ->allowedFilters([
                 AllowedFilter::exact('status'),
@@ -60,8 +72,12 @@ class AdminUserController extends Controller
                 AllowedFilter::partial('email'),
             ])
             ->allowedSorts(['created_at', 'name', 'email', 'status'])
+            ->defaultSort('-created_at')
+            // Applied after the requested/default sort, so it acts purely as a
+            // tiebreaker and never overrides an explicit ?sort=.
+            ->orderByDesc('id')
             ->with(['buyerProfile', 'dealerProfile'])
-            ->paginate($request->integer('per_page', 20))
+            ->paginate($perPage)
             ->appends($request->query());
 
         return $this->success(
@@ -71,6 +87,8 @@ class AdminUserController extends Controller
                 'last_page'    => $users->lastPage(),
                 'per_page'     => $users->perPage(),
                 'total'        => $users->total(),
+                'from'         => $users->firstItem(),
+                'to'           => $users->lastItem(),
             ]
         );
     }
