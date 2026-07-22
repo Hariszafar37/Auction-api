@@ -104,10 +104,15 @@ it('defaults to 20 users per page and reports an accurate range', function () {
 });
 
 /**
- * Regression — a newly activated user was absent from the unfiltered listing
- * (any page) while still being returned by name-search and status filters.
- * Root cause was the missing ORDER BY: each paged LIMIT/OFFSET query was free
- * to use a different row order, so a row could fall through every window.
+ * Regression — a newly activated user appeared absent from the unfiltered
+ * listing while still being returned by name-search and status filters.
+ * Root cause was the missing ORDER BY, which left MySQL returning rows in
+ * ascending primary-key order and pushed the newest user onto the last page.
+ *
+ * Note this test runs on SQLite, whose ordering is deterministic, so it does
+ * not reproduce the engine-level instability on its own — it pins the
+ * contract: the activated user is reachable from the default listing, and the
+ * pages tile the result set with no gaps or duplicates.
  */
 it('shows a newly activated user in the default listing without search or filter', function () {
     $admin = makeAdmin();

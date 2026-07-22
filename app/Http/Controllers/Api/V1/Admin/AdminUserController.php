@@ -50,15 +50,18 @@ class AdminUserController extends Controller
     /**
      * GET /api/v1/admin/users
      *
-     * Sorting is deliberately never left to the database. Without an explicit
-     * ORDER BY, MySQL is free to return rows in any order it likes, and that
-     * order may differ between the LIMIT/OFFSET windows that back each page —
-     * so a row could legitimately never appear on any page while still being
-     * returned by a narrower filtered/search query. That is exactly how newly
-     * activated users went missing from the default listing. `-created_at`
-     * gives the newest-first default the admin UI expects, and the trailing
-     * `id` tiebreaker keeps paging stable when timestamps collide (bulk
-     * imports and seeders create many users within the same second).
+     * Sorting is deliberately never left to the database. This query used to
+     * have no ORDER BY at all, which in practice meant MySQL returned rows in
+     * ascending primary-key order — so the newest user always landed on the
+     * LAST page. That is what made newly activated users look "missing" from
+     * the listing while search and status filters (narrow enough to fit one
+     * page) still found them. Nothing guarantees that order either: without an
+     * ORDER BY the engine may use a different one per LIMIT/OFFSET window, so
+     * a row can also be duplicated across pages or skipped entirely.
+     *
+     * `-created_at` gives the newest-first default the admin UI expects, and
+     * the trailing `id` tiebreaker keeps paging stable when timestamps collide
+     * (bulk imports and seeders create many users within the same second).
      */
     public function index(Request $request): JsonResponse
     {
