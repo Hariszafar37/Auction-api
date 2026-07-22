@@ -49,9 +49,24 @@ class AdminUserController extends Controller
 
     /**
      * GET /api/v1/admin/users
+     *
+     * Sorting is deliberately never left to the database. This query used to
+     * have no ORDER BY at all, which in practice meant MySQL returned rows in
+     * ascending primary-key order — so the newest user always landed on the
+     * LAST page. That is what made newly activated users look "missing" from
+     * the listing while search and status filters (narrow enough to fit one
+     * page) still found them. Nothing guarantees that order either: without an
+     * ORDER BY the engine may use a different one per LIMIT/OFFSET window, so
+     * a row can also be duplicated across pages or skipped entirely.
+     *
+     * `-created_at` gives the newest-first default the admin UI expects, and
+     * the trailing `id` tiebreaker keeps paging stable when timestamps collide
+     * (bulk imports and seeders create many users within the same second).
      */
     public function index(Request $request): JsonResponse
     {
+        $perPage = max(1, min($request->integer('per_page', 20), 100));
+
         $users = QueryBuilder::for(User::class)
             ->allowedFilters([
                 AllowedFilter::exact('status'),
@@ -60,8 +75,12 @@ class AdminUserController extends Controller
                 AllowedFilter::partial('email'),
             ])
             ->allowedSorts(['created_at', 'name', 'email', 'status'])
+            ->defaultSort('-created_at')
+            // Applied after the requested/default sort, so it acts purely as a
+            // tiebreaker and never overrides an explicit ?sort=.
+            ->orderByDesc('id')
             ->with(['buyerProfile', 'dealerProfile'])
-            ->paginate($request->integer('per_page', 20))
+            ->paginate($perPage)
             ->appends($request->query());
 
         return $this->success(
@@ -71,6 +90,8 @@ class AdminUserController extends Controller
                 'last_page'    => $users->lastPage(),
                 'per_page'     => $users->perPage(),
                 'total'        => $users->total(),
+                'from'         => $users->firstItem(),
+                'to'           => $users->lastItem(),
             ]
         );
     }

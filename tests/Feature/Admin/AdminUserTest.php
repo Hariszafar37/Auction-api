@@ -45,8 +45,116 @@ it('allows admin to list users', function () {
         ->assertJson(['success' => true])
         ->assertJsonStructure([
             'data',
-            'meta' => ['total', 'current_page', 'last_page', 'per_page'],
+            'meta' => ['total', 'current_page', 'last_page', 'per_page', 'from', 'to'],
         ]);
+});
+
+it('sorts users newest-first by default', function () {
+    $oldest = User::factory()->create(['created_at' => now()->subDays(3)]);
+    $middle = User::factory()->create(['created_at' => now()->subDays(2)]);
+    $newest = User::factory()->create(['created_at' => now()->subDay()]);
+
+    $ids = $this->actingAs(makeAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/users')
+        ->assertStatus(200)
+        ->json('data.*.id');
+
+    // The acting admin is created last, so it leads; the seeded three follow
+    // in strict newest-first order.
+    expect(array_values(array_intersect($ids, [$oldest->id, $middle->id, $newest->id])))
+        ->toBe([$newest->id, $middle->id, $oldest->id]);
+});
+
+it('still honours an explicit sort parameter', function () {
+    // Created newest-last, so the default sort would return them Zoe-first.
+    $zoe   = User::factory()->create(['name' => 'Zoe Zander']);
+    $aaron = User::factory()->create(['name' => 'Aaron Abbott']);
+
+    $ids = $this->actingAs(makeAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/users?sort=name')
+        ->assertStatus(200)
+        ->json('data.*.id');
+
+    expect(array_search($aaron->id, $ids, true))
+        ->toBeLessThan(array_search($zoe->id, $ids, true));
+});
+
+it('defaults to 20 users per page and reports an accurate range', function () {
+    $admin = makeAdmin();
+
+    // 22 factory users + the acting admin = 23 total, i.e. two pages.
+    User::factory(22)->create();
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/users')
+        ->assertStatus(200)
+        ->assertJsonCount(20, 'data')
+        ->assertJsonPath('meta.per_page', 20)
+        ->assertJsonPath('meta.total', 23)
+        ->assertJsonPath('meta.last_page', 2)
+        ->assertJsonPath('meta.from', 1)
+        ->assertJsonPath('meta.to', 20);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/users?page=2')
+        ->assertStatus(200)
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('meta.from', 21)
+        ->assertJsonPath('meta.to', 23);
+});
+
+/**
+ * Regression — a newly activated user appeared absent from the unfiltered
+ * listing while still being returned by name-search and status filters.
+ * Root cause was the missing ORDER BY, which left MySQL returning rows in
+ * ascending primary-key order and pushed the newest user onto the last page.
+ *
+ * Note this test runs on SQLite, whose ordering is deterministic, so it does
+ * not reproduce the engine-level instability on its own — it pins the
+ * contract: the activated user is reachable from the default listing, and the
+ * pages tile the result set with no gaps or duplicates.
+ */
+it('shows a newly activated user in the default listing without search or filter', function () {
+    $admin = makeAdmin();
+
+    // Enough existing users to push the listing past a single page.
+    User::factory(45)->create(['status' => 'active', 'created_at' => now()->subMonth()]);
+
+    $newUser = User::factory()->create([
+        'status'     => 'pending_activation',
+        'created_at' => now()->subMonth(),
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$newUser->id}/status", ['status' => 'active'])
+        ->assertStatus(200);
+
+    // Walk every page of the default (unfiltered, unsearched) listing.
+    $seen = [];
+    $page = 1;
+    do {
+        $body = $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/admin/users?page={$page}")
+            ->assertStatus(200)
+            ->json();
+
+        $seen = array_merge($seen, $body['data'] ? array_column($body['data'], 'id') : []);
+        $lastPage = $body['meta']['last_page'];
+        $page++;
+    } while ($page <= $lastPage);
+
+    expect($seen)->toContain($newUser->id)
+        // No duplicates and no gaps: the pages tile the full result set exactly.
+        ->and(count($seen))->toBe(count(array_unique($seen)))
+        ->and(count($seen))->toBe(User::count());
+
+    // ...and consistently with the filtered/search paths that always worked.
+    $filtered = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/users?filter[status]=active')
+        ->assertStatus(200)
+        ->json('data.*.id');
+
+    expect($filtered)->toContain($newUser->id);
 });
 
 it('forbids non-admin from listing users', function () {
