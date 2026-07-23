@@ -7,6 +7,7 @@ use App\Http\Requests\Profile\UpdateAccountInformationRequest;
 use App\Http\Requests\Profile\UpdateBillingInformationRequest;
 use App\Http\Requests\Profile\UpdateBusinessInformationRequest;
 use App\Http\Requests\Profile\UpdateDealerInformationRequest;
+use App\Http\Requests\Profile\UpdateGovernmentIdRequest;
 use App\Http\Requests\User\UpdatePaymentInfoRequest;
 use App\Http\Requests\User\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
@@ -91,6 +92,35 @@ class ProfileController extends Controller
         return $this->success(
             new UserResource($user->fresh()->load(self::PROFILE_RELATIONS)),
             'Contact information updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/profile/government-id
+     *
+     * Self-service edit of the government ID block captured during activation.
+     *
+     * Deliberately update-only: the address columns on user_account_information
+     * are NOT NULL, so a row cannot be created from ID fields alone. A user who
+     * has never completed the account information step has nothing to edit here.
+     */
+    public function updateGovernmentId(UpdateGovernmentIdRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->accountInformation) {
+            return $this->error(
+                'Complete your account information before adding government ID details.',
+                422,
+                'account_information_missing'
+            );
+        }
+
+        $user->accountInformation->update($request->validated());
+
+        return $this->success(
+            new UserResource($user->fresh()->load(self::PROFILE_RELATIONS)),
+            'Government ID updated.'
         );
     }
 

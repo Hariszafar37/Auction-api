@@ -6,11 +6,16 @@ use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * Self-service edit of the authenticated user's personal/contact information
- * (the residential / "shipping" address + government ID details).
+ * (the residential / "shipping" address and date of birth).
  *
- * Mirrors the validation of Activation\AccountInformationRequest but is used
+ * Mirrors the address half of Activation\AccountInformationRequest but is used
  * by active users editing their own profile — the activation wizard's
  * isActive() guard does NOT apply here.
+ *
+ * The government ID fields live on the same table row but are edited through
+ * their own section — see UpdateGovernmentIdRequest. Any id_* key posted here
+ * is ignored rather than written, so editing an address can never blank out an
+ * ID on file.
  */
 class UpdateAccountInformationRequest extends FormRequest
 {
@@ -29,11 +34,6 @@ class UpdateAccountInformationRequest extends FormRequest
             'county'             => ['nullable', 'string', 'max:100'],
             'city'               => ['required', 'string', 'max:100'],
             'zip_postal_code'    => ['required', 'string', 'max:20'],
-            'id_type'            => ['required', 'in:driver_license,state_id,passport'],
-            'id_number'          => ['required', 'string', 'max:100'],
-            'id_issuing_state'   => ['nullable', 'string', 'max:100'],
-            'id_issuing_country' => ['nullable', 'string', 'max:2'],
-            'id_expiry'          => ['nullable', 'date'],
         ];
     }
 

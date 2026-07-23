@@ -16,6 +16,7 @@ use App\Http\Requests\Profile\UpdateAccountInformationRequest;
 use App\Http\Requests\Profile\UpdateBillingInformationRequest;
 use App\Http\Requests\Profile\UpdateBusinessInformationRequest;
 use App\Http\Requests\Profile\UpdateDealerInformationRequest;
+use App\Http\Requests\Profile\UpdateGovernmentIdRequest;
 use App\Http\Resources\Admin\AccountActionResource;
 use App\Http\Resources\UserResource;
 use App\Models\AccountAction;
@@ -378,6 +379,35 @@ class AdminUserController extends Controller
         return $this->success(
             new UserResource($user->fresh(self::DETAIL_RELATIONS)),
             'Contact information updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/admin/users/{user}/government-id
+     *
+     * Admin edit of a target user's government ID details (type / number /
+     * issuing country / issuing state / expiry). Gated by users.manage on the
+     * route, so this data is only ever readable and writable by staff.
+     *
+     * Update-only for the same reason as the self-service endpoint: the address
+     * columns on user_account_information are NOT NULL and cannot be satisfied
+     * from an ID-only payload.
+     */
+    public function updateGovernmentId(UpdateGovernmentIdRequest $request, User $user): JsonResponse
+    {
+        if (! $user->accountInformation) {
+            return $this->error(
+                'This user has not completed the account information step yet.',
+                422,
+                'account_information_missing'
+            );
+        }
+
+        $user->accountInformation->update($request->validated());
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'Government ID updated.'
         );
     }
 

@@ -175,6 +175,7 @@ Route::prefix('v1')->group(function () {
 
             // Self-service edit of activation data sections (active users)
             Route::put('/account-information',  [ProfileController::class, 'updateAccountInformation'])->name('account-information');
+            Route::put('/government-id',        [ProfileController::class, 'updateGovernmentId'])->name('government-id');
             Route::put('/billing-information',  [ProfileController::class, 'updateBillingInformation'])->name('billing-information');
             Route::put('/business-information', [ProfileController::class, 'updateBusinessInformation'])->name('business-information');
             Route::put('/dealer-information',   [ProfileController::class, 'updateDealerInformation'])->name('dealer-information');
@@ -347,6 +348,7 @@ Route::prefix('v1')->group(function () {
 
                 // Admin edit of a user's profile sections (mirrors the user's own self-service edits)
                 Route::put('/{user}/account-information',  [AdminUserController::class, 'updateAccountInformation'])->name('account-information')->middleware('permission:users.manage');
+                Route::put('/{user}/government-id',        [AdminUserController::class, 'updateGovernmentId'])->name('government-id')->middleware('permission:users.manage');
                 Route::put('/{user}/billing-information',  [AdminUserController::class, 'updateBillingInformation'])->name('billing-information')->middleware('permission:users.manage');
                 Route::put('/{user}/business-information', [AdminUserController::class, 'updateBusinessInformation'])->name('business-information')->middleware('permission:users.manage');
                 Route::put('/{user}/dealer-information',   [AdminUserController::class, 'updateDealerInformation'])->name('dealer-information')->middleware('permission:users.manage');
