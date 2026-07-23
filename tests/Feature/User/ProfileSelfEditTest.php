@@ -24,8 +24,6 @@ it('lets an active user update their contact information', function () {
             'state'           => 'Maryland',
             'city'            => 'Baltimore',
             'zip_postal_code' => '21201',
-            'id_type'         => 'driver_license',
-            'id_number'       => 'D1234567',
         ])
         ->assertOk()
         ->assertJsonPath('data.account_information.address', '123 Main St');
@@ -58,8 +56,6 @@ it('updates the existing contact record instead of creating a duplicate', functi
             'state'           => 'Maryland',
             'city'            => 'Annapolis',
             'zip_postal_code' => '21401',
-            'id_type'         => 'state_id',
-            'id_number'       => 'NEW999',
         ])
         ->assertOk();
 
@@ -79,6 +75,58 @@ it('rejects contact information with a missing required field', function () {
         ])
         ->assertStatus(422)
         ->assertJsonValidationErrors(['date_of_birth', 'country', 'city']);
+});
+
+// ── Government ID ─────────────────────────────────────────────────────────────
+
+it('lets an active user update their government ID on its own', function () {
+    $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+    $user->accountInformation()->create([
+        'date_of_birth'   => '1985-06-01',
+        'address'         => '10 Existing Rd',
+        'country'         => 'US',
+        'state'           => 'Virginia',
+        'city'            => 'Richmond',
+        'zip_postal_code' => '23218',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'OLD123',
+    ]);
+
+    $this->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile/government-id', [
+            'id_type'            => 'passport',
+            'id_number'          => 'P4455667',
+            'id_issuing_country' => 'US',
+            'id_expiry'          => '2033-01-31',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.account_information.id_type', 'passport')
+        ->assertJsonPath('data.account_information.id_number', 'P4455667')
+        ->assertJsonPath('data.account_information.id_expiry', '2033-01-31');
+
+    // Address half of the shared row is untouched.
+    expect($user->fresh()->accountInformation->address)->toBe('10 Existing Rd');
+});
+
+it('rejects a government ID update before account information exists', function () {
+    $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+
+    $this->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile/government-id', [
+            'id_type'   => 'state_id',
+            'id_number' => 'S1',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'account_information_missing');
+});
+
+it('requires an ID type and number on the government ID endpoint', function () {
+    $user = User::factory()->create(['status' => 'active', 'account_type' => 'individual']);
+
+    $this->actingAs($user, 'sanctum')
+        ->putJson('/api/v1/profile/government-id', [])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['id_type', 'id_number']);
 });
 
 // ── Billing information ───────────────────────────────────────────────────────

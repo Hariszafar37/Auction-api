@@ -408,6 +408,136 @@ it('admin can update a user contact (account) information', function () {
     expect($user->fresh()->accountInformation->city)->toBe('Baltimore');
 });
 
+it('leaves the government ID untouched when an admin edits the address', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->accountInformation()->create([
+        'date_of_birth'      => '1990-01-01',
+        'address'            => 'Old Address',
+        'country'            => 'US',
+        'state'              => 'Virginia',
+        'city'               => 'Richmond',
+        'zip_postal_code'    => '23218',
+        'id_type'            => 'passport',
+        'id_number'          => 'P9988776',
+        'id_issuing_country' => 'US',
+        'id_expiry'          => '2031-05-05',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/account-information", [
+            'date_of_birth'   => '1990-01-01',
+            'address'         => 'New Address',
+            'country'         => 'US',
+            'state'           => 'Maryland',
+            'city'            => 'Baltimore',
+            'zip_postal_code' => '21201',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.address', 'New Address')
+        ->assertJsonPath('data.account_information.id_number', 'P9988776')
+        ->assertJsonPath('data.account_information.id_type', 'passport');
+});
+
+// ── Government ID (admin-only section) ────────────────────────────────────
+
+it('admin can update a user government ID', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->accountInformation()->create([
+        'date_of_birth'   => '1990-01-01',
+        'address'         => '123 Main St',
+        'country'         => 'US',
+        'state'           => 'Maryland',
+        'city'            => 'Baltimore',
+        'zip_postal_code' => '21201',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'D1234567',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'            => 'state_id',
+            'id_number'          => 'S7654321',
+            'id_issuing_country' => 'US',
+            'id_issuing_state'   => 'Maryland',
+            'id_expiry'          => '2030-12-31',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.id_type', 'state_id')
+        ->assertJsonPath('data.account_information.id_number', 'S7654321')
+        ->assertJsonPath('data.account_information.id_issuing_state', 'Maryland')
+        ->assertJsonPath('data.account_information.id_expiry', '2030-12-31');
+
+    // The address half of the row must be left alone.
+    expect($user->fresh()->accountInformation->address)->toBe('123 Main St');
+});
+
+it('keeps the expiry date for a passport government ID', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->accountInformation()->create([
+        'date_of_birth'   => '1990-01-01',
+        'address'         => '123 Main St',
+        'country'         => 'US',
+        'state'           => 'Maryland',
+        'city'            => 'Baltimore',
+        'zip_postal_code' => '21201',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'D1234567',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'            => 'passport',
+            'id_number'          => 'P1122334',
+            'id_issuing_country' => 'GB',
+            'id_expiry'          => '2032-08-01',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.id_expiry', '2032-08-01')
+        ->assertJsonPath('data.account_information.id_issuing_country', 'GB');
+});
+
+it('rejects a government ID update for a user with no account information', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'   => 'state_id',
+            'id_number' => 'S7654321',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'account_information_missing');
+});
+
+it('rejects an invalid government ID type', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'   => 'library_card',
+            'id_number' => 'X1',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['id_type']);
+});
+
+it('forbids a non-admin from updating a government ID', function () {
+    $buyer = User::factory()->create(['status' => 'active']);
+    $buyer->assignRole('buyer');
+    $target = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($buyer, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$target->id}/government-id", [
+            'id_type'   => 'state_id',
+            'id_number' => 'S7654321',
+        ])
+        ->assertStatus(403);
+});
+
 it('admin can update a user billing information', function () {
     $admin = makeAdmin();
     $user  = User::factory()->create(['status' => 'active']);
