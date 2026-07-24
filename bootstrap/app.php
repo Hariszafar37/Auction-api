@@ -18,8 +18,32 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
+    )
+    // Broadcasting is registered explicitly rather than via withRouting(channels:),
+    // which forwards to withBroadcasting() with NO attributes and therefore lets
+    // Broadcast::routes() fall back to its default ['middleware' => ['web']].
+    //
+    // That default is the session guard. This backend is token-only — the SPA
+    // sends `Authorization: Bearer <token>` to /broadcasting/auth — so
+    // Broadcaster::retrieveUser() resolved $request->user() against the session
+    // guard, got null, and every private-channel subscription was rejected with a
+    // 403 HTML page. Outbid and won notifications never reached the browser.
+    // (Public channels are unaffected; they never hit this endpoint.)
+    //
+    // auth:sanctum authenticates the bearer token and calls shouldUse('sanctum'),
+    // which is what makes $request->user() resolve inside the broadcaster. It also
+    // turns an expired token into a 401 JSON response instead of a 403 HTML page.
+    // SlidingTokenExpiration is included so a channel subscription counts as
+    // activity, exactly as an /api/* call does.
+    ->withBroadcasting(
+        __DIR__.'/../routes/channels.php',
+        attributes: [
+            'middleware' => [
+                'auth:sanctum',
+                \App\Http\Middleware\SlidingTokenExpiration::class,
+            ],
+        ],
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
