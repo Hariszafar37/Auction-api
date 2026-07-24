@@ -30,6 +30,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'account.usable'     => \App\Http\Middleware\EnsureAccountUsable::class,
         ]);
 
+        // Turns the per-role token expires_at into an IDLE timeout by pushing it
+        // forward on every authenticated request. Appended to the api group (not
+        // attached per-route) so it covers every authenticated endpoint; it does
+        // its work in the after phase, by which point auth:sanctum has resolved
+        // the user, and no-ops entirely for unauthenticated requests.
+        $middleware->api(append: [
+            \App\Http\Middleware\SlidingTokenExpiration::class,
+        ]);
+
         // Trust reverse proxies / load balancers so the real client IP is read
         // from X-Forwarded-For (used by the account-action audit log). Configured
         // via TRUSTED_PROXIES:

@@ -30,7 +30,10 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // X-Token-Expires-At is set by SlidingTokenExpiration on every authenticated
+    // response. Cross-origin JS can only read response headers that are listed
+    // here, so without it the frontend's pre-expiry warning never fires.
+    'exposed_headers' => ['X-Token-Expires-At'],
 
     'max_age' => 86400,
 
