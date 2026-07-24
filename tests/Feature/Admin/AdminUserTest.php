@@ -45,8 +45,116 @@ it('allows admin to list users', function () {
         ->assertJson(['success' => true])
         ->assertJsonStructure([
             'data',
-            'meta' => ['total', 'current_page', 'last_page', 'per_page'],
+            'meta' => ['total', 'current_page', 'last_page', 'per_page', 'from', 'to'],
         ]);
+});
+
+it('sorts users newest-first by default', function () {
+    $oldest = User::factory()->create(['created_at' => now()->subDays(3)]);
+    $middle = User::factory()->create(['created_at' => now()->subDays(2)]);
+    $newest = User::factory()->create(['created_at' => now()->subDay()]);
+
+    $ids = $this->actingAs(makeAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/users')
+        ->assertStatus(200)
+        ->json('data.*.id');
+
+    // The acting admin is created last, so it leads; the seeded three follow
+    // in strict newest-first order.
+    expect(array_values(array_intersect($ids, [$oldest->id, $middle->id, $newest->id])))
+        ->toBe([$newest->id, $middle->id, $oldest->id]);
+});
+
+it('still honours an explicit sort parameter', function () {
+    // Created newest-last, so the default sort would return them Zoe-first.
+    $zoe   = User::factory()->create(['name' => 'Zoe Zander']);
+    $aaron = User::factory()->create(['name' => 'Aaron Abbott']);
+
+    $ids = $this->actingAs(makeAdmin(), 'sanctum')
+        ->getJson('/api/v1/admin/users?sort=name')
+        ->assertStatus(200)
+        ->json('data.*.id');
+
+    expect(array_search($aaron->id, $ids, true))
+        ->toBeLessThan(array_search($zoe->id, $ids, true));
+});
+
+it('defaults to 20 users per page and reports an accurate range', function () {
+    $admin = makeAdmin();
+
+    // 22 factory users + the acting admin = 23 total, i.e. two pages.
+    User::factory(22)->create();
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/users')
+        ->assertStatus(200)
+        ->assertJsonCount(20, 'data')
+        ->assertJsonPath('meta.per_page', 20)
+        ->assertJsonPath('meta.total', 23)
+        ->assertJsonPath('meta.last_page', 2)
+        ->assertJsonPath('meta.from', 1)
+        ->assertJsonPath('meta.to', 20);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/users?page=2')
+        ->assertStatus(200)
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('meta.from', 21)
+        ->assertJsonPath('meta.to', 23);
+});
+
+/**
+ * Regression — a newly activated user appeared absent from the unfiltered
+ * listing while still being returned by name-search and status filters.
+ * Root cause was the missing ORDER BY, which left MySQL returning rows in
+ * ascending primary-key order and pushed the newest user onto the last page.
+ *
+ * Note this test runs on SQLite, whose ordering is deterministic, so it does
+ * not reproduce the engine-level instability on its own — it pins the
+ * contract: the activated user is reachable from the default listing, and the
+ * pages tile the result set with no gaps or duplicates.
+ */
+it('shows a newly activated user in the default listing without search or filter', function () {
+    $admin = makeAdmin();
+
+    // Enough existing users to push the listing past a single page.
+    User::factory(45)->create(['status' => 'active', 'created_at' => now()->subMonth()]);
+
+    $newUser = User::factory()->create([
+        'status'     => 'pending_activation',
+        'created_at' => now()->subMonth(),
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/users/{$newUser->id}/status", ['status' => 'active'])
+        ->assertStatus(200);
+
+    // Walk every page of the default (unfiltered, unsearched) listing.
+    $seen = [];
+    $page = 1;
+    do {
+        $body = $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/admin/users?page={$page}")
+            ->assertStatus(200)
+            ->json();
+
+        $seen = array_merge($seen, $body['data'] ? array_column($body['data'], 'id') : []);
+        $lastPage = $body['meta']['last_page'];
+        $page++;
+    } while ($page <= $lastPage);
+
+    expect($seen)->toContain($newUser->id)
+        // No duplicates and no gaps: the pages tile the full result set exactly.
+        ->and(count($seen))->toBe(count(array_unique($seen)))
+        ->and(count($seen))->toBe(User::count());
+
+    // ...and consistently with the filtered/search paths that always worked.
+    $filtered = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/users?filter[status]=active')
+        ->assertStatus(200)
+        ->json('data.*.id');
+
+    expect($filtered)->toContain($newUser->id);
 });
 
 it('forbids non-admin from listing users', function () {
@@ -298,6 +406,136 @@ it('admin can update a user contact (account) information', function () {
         ->assertJsonPath('data.account_information.address', '123 Main St');
 
     expect($user->fresh()->accountInformation->city)->toBe('Baltimore');
+});
+
+it('leaves the government ID untouched when an admin edits the address', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->accountInformation()->create([
+        'date_of_birth'      => '1990-01-01',
+        'address'            => 'Old Address',
+        'country'            => 'US',
+        'state'              => 'Virginia',
+        'city'               => 'Richmond',
+        'zip_postal_code'    => '23218',
+        'id_type'            => 'passport',
+        'id_number'          => 'P9988776',
+        'id_issuing_country' => 'US',
+        'id_expiry'          => '2031-05-05',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/account-information", [
+            'date_of_birth'   => '1990-01-01',
+            'address'         => 'New Address',
+            'country'         => 'US',
+            'state'           => 'Maryland',
+            'city'            => 'Baltimore',
+            'zip_postal_code' => '21201',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.address', 'New Address')
+        ->assertJsonPath('data.account_information.id_number', 'P9988776')
+        ->assertJsonPath('data.account_information.id_type', 'passport');
+});
+
+// ── Government ID (admin-only section) ────────────────────────────────────
+
+it('admin can update a user government ID', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->accountInformation()->create([
+        'date_of_birth'   => '1990-01-01',
+        'address'         => '123 Main St',
+        'country'         => 'US',
+        'state'           => 'Maryland',
+        'city'            => 'Baltimore',
+        'zip_postal_code' => '21201',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'D1234567',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'            => 'state_id',
+            'id_number'          => 'S7654321',
+            'id_issuing_country' => 'US',
+            'id_issuing_state'   => 'Maryland',
+            'id_expiry'          => '2030-12-31',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.id_type', 'state_id')
+        ->assertJsonPath('data.account_information.id_number', 'S7654321')
+        ->assertJsonPath('data.account_information.id_issuing_state', 'Maryland')
+        ->assertJsonPath('data.account_information.id_expiry', '2030-12-31');
+
+    // The address half of the row must be left alone.
+    expect($user->fresh()->accountInformation->address)->toBe('123 Main St');
+});
+
+it('keeps the expiry date for a passport government ID', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+    $user->accountInformation()->create([
+        'date_of_birth'   => '1990-01-01',
+        'address'         => '123 Main St',
+        'country'         => 'US',
+        'state'           => 'Maryland',
+        'city'            => 'Baltimore',
+        'zip_postal_code' => '21201',
+        'id_type'         => 'driver_license',
+        'id_number'       => 'D1234567',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'            => 'passport',
+            'id_number'          => 'P1122334',
+            'id_issuing_country' => 'GB',
+            'id_expiry'          => '2032-08-01',
+        ])
+        ->assertStatus(200)
+        ->assertJsonPath('data.account_information.id_expiry', '2032-08-01')
+        ->assertJsonPath('data.account_information.id_issuing_country', 'GB');
+});
+
+it('rejects a government ID update for a user with no account information', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'   => 'state_id',
+            'id_number' => 'S7654321',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'account_information_missing');
+});
+
+it('rejects an invalid government ID type', function () {
+    $admin = makeAdmin();
+    $user  = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$user->id}/government-id", [
+            'id_type'   => 'library_card',
+            'id_number' => 'X1',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['id_type']);
+});
+
+it('forbids a non-admin from updating a government ID', function () {
+    $buyer = User::factory()->create(['status' => 'active']);
+    $buyer->assignRole('buyer');
+    $target = User::factory()->create(['status' => 'active']);
+
+    $this->actingAs($buyer, 'sanctum')
+        ->putJson("/api/v1/admin/users/{$target->id}/government-id", [
+            'id_type'   => 'state_id',
+            'id_number' => 'S7654321',
+        ])
+        ->assertStatus(403);
 });
 
 it('admin can update a user billing information', function () {

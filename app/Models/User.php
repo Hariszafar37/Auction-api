@@ -12,6 +12,7 @@ use App\Models\SellerProfile;
 use App\Models\UserBusinessInformation;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -201,6 +202,32 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isPendingActivation(): bool
     {
         return $this->status === 'pending_activation';
+    }
+
+    // ── Session / token helpers ───────────────────────────────────
+
+    /**
+     * Idle lifetime, in minutes, for API tokens issued to this user.
+     *
+     * Admin and staff reach the back-office surfaces, so they get the shorter
+     * window; buyers, dealers and sellers get the standard one. Both values and
+     * the privileged role list live in config/sanctum.php.
+     */
+    public function tokenLifetimeMinutes(): int
+    {
+        $config = config('sanctum.token_lifetime');
+
+        return $this->hasAnyRole($config['privileged_roles'])
+            ? (int) $config['privileged_minutes']
+            : (int) $config['standard_minutes'];
+    }
+
+    /**
+     * Absolute expiry for a token issued — or slid forward — right now.
+     */
+    public function tokenExpiresAt(): Carbon
+    {
+        return now()->addMinutes($this->tokenLifetimeMinutes());
     }
 
     // ── Activation helpers ────────────────────────────────────────

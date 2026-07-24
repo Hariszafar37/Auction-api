@@ -16,6 +16,7 @@ use App\Http\Requests\Profile\UpdateAccountInformationRequest;
 use App\Http\Requests\Profile\UpdateBillingInformationRequest;
 use App\Http\Requests\Profile\UpdateBusinessInformationRequest;
 use App\Http\Requests\Profile\UpdateDealerInformationRequest;
+use App\Http\Requests\Profile\UpdateGovernmentIdRequest;
 use App\Http\Resources\Admin\AccountActionResource;
 use App\Http\Resources\UserResource;
 use App\Models\AccountAction;
@@ -49,9 +50,24 @@ class AdminUserController extends Controller
 
     /**
      * GET /api/v1/admin/users
+     *
+     * Sorting is deliberately never left to the database. This query used to
+     * have no ORDER BY at all, which in practice meant MySQL returned rows in
+     * ascending primary-key order — so the newest user always landed on the
+     * LAST page. That is what made newly activated users look "missing" from
+     * the listing while search and status filters (narrow enough to fit one
+     * page) still found them. Nothing guarantees that order either: without an
+     * ORDER BY the engine may use a different one per LIMIT/OFFSET window, so
+     * a row can also be duplicated across pages or skipped entirely.
+     *
+     * `-created_at` gives the newest-first default the admin UI expects, and
+     * the trailing `id` tiebreaker keeps paging stable when timestamps collide
+     * (bulk imports and seeders create many users within the same second).
      */
     public function index(Request $request): JsonResponse
     {
+        $perPage = max(1, min($request->integer('per_page', 20), 100));
+
         $users = QueryBuilder::for(User::class)
             ->allowedFilters([
                 AllowedFilter::exact('status'),
@@ -60,8 +76,12 @@ class AdminUserController extends Controller
                 AllowedFilter::partial('email'),
             ])
             ->allowedSorts(['created_at', 'name', 'email', 'status'])
+            ->defaultSort('-created_at')
+            // Applied after the requested/default sort, so it acts purely as a
+            // tiebreaker and never overrides an explicit ?sort=.
+            ->orderByDesc('id')
             ->with(['buyerProfile', 'dealerProfile'])
-            ->paginate($request->integer('per_page', 20))
+            ->paginate($perPage)
             ->appends($request->query());
 
         return $this->success(
@@ -71,6 +91,8 @@ class AdminUserController extends Controller
                 'last_page'    => $users->lastPage(),
                 'per_page'     => $users->perPage(),
                 'total'        => $users->total(),
+                'from'         => $users->firstItem(),
+                'to'           => $users->lastItem(),
             ]
         );
     }
@@ -357,6 +379,35 @@ class AdminUserController extends Controller
         return $this->success(
             new UserResource($user->fresh(self::DETAIL_RELATIONS)),
             'Contact information updated.'
+        );
+    }
+
+    /**
+     * PUT /api/v1/admin/users/{user}/government-id
+     *
+     * Admin edit of a target user's government ID details (type / number /
+     * issuing country / issuing state / expiry). Gated by users.manage on the
+     * route, so this data is only ever readable and writable by staff.
+     *
+     * Update-only for the same reason as the self-service endpoint: the address
+     * columns on user_account_information are NOT NULL and cannot be satisfied
+     * from an ID-only payload.
+     */
+    public function updateGovernmentId(UpdateGovernmentIdRequest $request, User $user): JsonResponse
+    {
+        if (! $user->accountInformation) {
+            return $this->error(
+                'This user has not completed the account information step yet.',
+                422,
+                'account_information_missing'
+            );
+        }
+
+        $user->accountInformation->update($request->validated());
+
+        return $this->success(
+            new UserResource($user->fresh(self::DETAIL_RELATIONS)),
+            'Government ID updated.'
         );
     }
 
