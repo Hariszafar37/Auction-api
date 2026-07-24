@@ -173,7 +173,17 @@ class AuthController extends Controller
             return $this->error('Please set your password before logging in.', 403, 'password_not_set');
         }
 
-        $token = $user->createToken($request->input('device_name', 'api'))->plainTextToken;
+        // Tokens carry a per-role expiry (60 min for admin/staff, 180 for
+        // everyone else — see User::tokenLifetimeMinutes). SlidingTokenExpiration
+        // pushes this forward on each authenticated request, so it behaves as an
+        // idle timeout rather than a hard cut-off from login.
+        $expiresAt = $user->tokenExpiresAt();
+
+        $token = $user->createToken(
+            $request->input('device_name', 'api'),
+            ['*'],
+            $expiresAt,
+        )->plainTextToken;
 
         $user->load(['accountInformation', 'dealerInformation', 'billingInformation']);
 
@@ -196,6 +206,11 @@ class AuthController extends Controller
             [
                 'user'                => new UserResource($user),
                 'token'               => $token,
+                // Bootstrap values for the frontend session-expiry warning. The
+                // authoritative, continuously-refreshed value afterwards is the
+                // X-Token-Expires-At response header.
+                'token_expires_at'    => $expiresAt->toIso8601String(),
+                'token_expires_in'    => $user->tokenLifetimeMinutes() * 60,
                 'activation_required' => $activationRequired,
                 'next_activation_url' => $nextActivationUrl,
             ],
