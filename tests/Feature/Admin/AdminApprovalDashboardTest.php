@@ -6,6 +6,7 @@ use App\Models\GovProfile;
 use App\Models\PowerOfAttorney;
 use App\Models\SellerProfile;
 use App\Models\User;
+use App\Models\UserDocument;
 use Database\Seeders\RolePermissionSeeder;
 
 beforeEach(function () {
@@ -261,4 +262,145 @@ it('blocks non-admin users from the approval dashboard', function () {
     $this->actingAs($buyer, 'sanctum')
         ->getJson('/api/v1/admin/approvals/history')
         ->assertStatus(403);
+});
+
+// ── Document-review notes (fix: notes written from the user-detail page were
+//    invisible to the Approval Dashboard because they live in `user_documents`,
+//    not in the profile's `rejection_reason`) ──────────────────────────────────
+
+function apdReviewDocument(User $admin, int $userId, string $notes, string $type = 'dealer_license'): UserDocument
+{
+    $doc = UserDocument::create([
+        'user_id'       => $userId,
+        'type'          => $type,
+        'status'        => 'pending_review',
+        'file_path'     => "docs/{$userId}-{$type}.pdf",
+        'disk'          => 'public',
+        'original_name' => "{$type}.pdf",
+        'mime_type'     => 'application/pdf',
+        'size_bytes'    => 1024,
+    ]);
+
+    test()->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/documents/{$doc->id}/status", [
+            'status'      => 'rejected',
+            'admin_notes' => $notes,
+        ])
+        ->assertStatus(200);
+
+    return $doc->fresh();
+}
+
+it('exposes the latest document-review note on the dashboard record', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    apdReviewDocument($admin, $profile->user_id, 'License scan is blurry — re-upload.');
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer');
+
+    $response->assertStatus(200)
+        ->assertJsonPath('data.0.document_remarks', 'License scan is blurry — re-upload.')
+        ->assertJsonPath('data.0.document_type', 'dealer_license')
+        ->assertJsonPath('data.0.document_status', 'rejected')
+        ->assertJsonPath('data.0.document_reviewed_by', $admin->name)
+        ->assertJsonPath('data.0.document_notes_count', 1);
+});
+
+it('keeps document notes separate from the profile rejection reason', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    apdReviewDocument($admin, $profile->user_id, 'Document note only.');
+
+    // Profile itself was never rejected, so `remarks` must stay null.
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.remarks', null)
+        ->assertJsonPath('data.0.document_remarks', 'Document note only.');
+});
+
+it('reports the newest note and a count when several documents are reviewed', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    apdReviewDocument($admin, $profile->user_id, 'Older note.', 'id');
+    $this->travel(1)->minutes();
+    apdReviewDocument($admin, $profile->user_id, 'Newest note.', 'dealer_license');
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.document_remarks', 'Newest note.')
+        ->assertJsonPath('data.0.document_type', 'dealer_license')
+        ->assertJsonPath('data.0.document_notes_count', 2);
+});
+
+it('defaults document fields when the applicant has no reviewed documents', function () {
+    $admin   = approvalDashboardAdmin();
+    apdPendingDealer();
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.document_remarks', null)
+        ->assertJsonPath('data.0.document_notes_count', 0);
+});
+
+it('interleaves document reviews into the record history timeline', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    apdReviewDocument($admin, $profile->user_id, 'Blurry scan.');
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/v1/admin/approvals/dealer/{$profile->id}/history");
+
+    $response->assertStatus(200);
+
+    $entries = collect($response->json('data'));
+    $review  = $entries->firstWhere('action', 'document_reviewed');
+
+    expect($review)->not->toBeNull()
+        ->and($review['remarks'])->toBe('Blurry scan.')
+        ->and($review['document_type'])->toBe('dealer_license')
+        ->and($review['new_status'])->toBe('rejected')
+        ->and($review['previous_status'])->toBe('pending_review')
+        ->and($review['performed_by_name'])->toBe($admin->name);
+
+    // The synthesized "applied" entry must still be present.
+    expect($entries->firstWhere('action', 'applied'))->not->toBeNull();
+});
+
+it('still synthesizes a legacy decision entry when only document reviews exist', function () {
+    $admin = approvalDashboardAdmin();
+
+    // Legacy profile: reviewed before audit logging existed (no approval_histories row).
+    $user    = User::factory()->create(['account_type' => 'dealer']);
+    $profile = DealerProfile::create([
+        'user_id'          => $user->id,
+        'company_name'     => 'Legacy Motors',
+        'dealer_license'   => 'DL-LEGACY',
+        'approval_status'  => 'rejected',
+        'rejection_reason' => 'Legacy reason',
+        'reviewed_by'      => $admin->id,
+        'reviewed_at'      => now(),
+    ]);
+
+    apdReviewDocument($admin, $user->id, 'Doc note.');
+
+    $entries = collect(
+        $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/admin/approvals/dealer/{$profile->id}/history")
+            ->assertStatus(200)
+            ->json('data')
+    );
+
+    // Document rows must not suppress the legacy synthesis.
+    $legacy = $entries->firstWhere('action', 'rejected');
+    expect($legacy)->not->toBeNull()
+        ->and($legacy['remarks'])->toBe('Legacy reason')
+        ->and($entries->firstWhere('action', 'document_reviewed'))->not->toBeNull();
 });

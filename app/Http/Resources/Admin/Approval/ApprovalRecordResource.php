@@ -31,6 +31,16 @@ class ApprovalRecordResource extends JsonResource
             'action_by'      => $r['action_by_name'],
             'action_by_id'   => $r['action_by_id'],
             'remarks'        => $r['remarks'],
+
+            // Latest document-review note left for this applicant from the admin
+            // user-detail page. Separate from `remarks` (profile rejection reason) —
+            // the two come from different tables and must not be conflated.
+            'document_remarks'     => $r['document_remarks'] ?? null,
+            'document_type'        => $r['document_type'] ?? null,
+            'document_status'      => $r['document_status'] ?? null,
+            'document_reviewed_at' => $r['document_reviewed_at'] ?? null,
+            'document_reviewed_by' => $r['document_reviewed_by'] ?? null,
+            'document_notes_count' => $r['document_notes_count'] ?? 0,
         ];
     }
 }
