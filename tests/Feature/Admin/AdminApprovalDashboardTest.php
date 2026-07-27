@@ -291,7 +291,7 @@ function apdReviewDocument(User $admin, int $userId, string $notes, string $type
     return $doc->fresh();
 }
 
-it('exposes the latest document-review note on the dashboard record', function () {
+it('exposes a document-review note on the dashboard record', function () {
     $admin   = approvalDashboardAdmin();
     $profile = apdPendingDealer();
 
@@ -301,10 +301,10 @@ it('exposes the latest document-review note on the dashboard record', function (
         ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer');
 
     $response->assertStatus(200)
-        ->assertJsonPath('data.0.document_remarks', 'License scan is blurry — re-upload.')
-        ->assertJsonPath('data.0.document_type', 'dealer_license')
-        ->assertJsonPath('data.0.document_status', 'rejected')
-        ->assertJsonPath('data.0.document_reviewed_by', $admin->name)
+        ->assertJsonPath('data.0.document_notes.0.remarks', 'License scan is blurry — re-upload.')
+        ->assertJsonPath('data.0.document_notes.0.type', 'dealer_license')
+        ->assertJsonPath('data.0.document_notes.0.status', 'rejected')
+        ->assertJsonPath('data.0.document_notes.0.reviewed_by', $admin->name)
         ->assertJsonPath('data.0.document_notes_count', 1);
 });
 
@@ -319,23 +319,32 @@ it('keeps document notes separate from the profile rejection reason', function (
         ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
         ->assertStatus(200)
         ->assertJsonPath('data.0.remarks', null)
-        ->assertJsonPath('data.0.document_remarks', 'Document note only.');
+        ->assertJsonPath('data.0.document_notes.0.remarks', 'Document note only.');
 });
 
-it('reports the newest note and a count when several documents are reviewed', function () {
+it('returns every document note, newest first, each tied to its own document', function () {
     $admin   = approvalDashboardAdmin();
     $profile = apdPendingDealer();
 
-    apdReviewDocument($admin, $profile->user_id, 'Older note.', 'id');
+    // A dealer uploads several documents; each can be rejected for its own reason.
+    apdReviewDocument($admin, $profile->user_id, 'ID is fine.', 'id');
     $this->travel(1)->minutes();
-    apdReviewDocument($admin, $profile->user_id, 'Newest note.', 'dealer_license');
+    apdReviewDocument($admin, $profile->user_id, 'License expired.', 'dealer_license');
+    $this->travel(1)->minutes();
+    apdReviewDocument($admin, $profile->user_id, 'Salesman card unreadable.', 'salesman_license');
 
     $this->actingAs($admin, 'sanctum')
         ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
         ->assertStatus(200)
-        ->assertJsonPath('data.0.document_remarks', 'Newest note.')
-        ->assertJsonPath('data.0.document_type', 'dealer_license')
-        ->assertJsonPath('data.0.document_notes_count', 2);
+        ->assertJsonCount(3, 'data.0.document_notes')
+        ->assertJsonPath('data.0.document_notes_count', 3)
+        // Newest first, and each note keeps its own document identity.
+        ->assertJsonPath('data.0.document_notes.0.type', 'salesman_license')
+        ->assertJsonPath('data.0.document_notes.0.remarks', 'Salesman card unreadable.')
+        ->assertJsonPath('data.0.document_notes.1.type', 'dealer_license')
+        ->assertJsonPath('data.0.document_notes.1.remarks', 'License expired.')
+        ->assertJsonPath('data.0.document_notes.2.type', 'id')
+        ->assertJsonPath('data.0.document_notes.2.remarks', 'ID is fine.');
 });
 
 it('defaults document fields when the applicant has no reviewed documents', function () {
@@ -345,7 +354,7 @@ it('defaults document fields when the applicant has no reviewed documents', func
     $this->actingAs($admin, 'sanctum')
         ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
         ->assertStatus(200)
-        ->assertJsonPath('data.0.document_remarks', null)
+        ->assertJsonPath('data.0.document_notes', [])
         ->assertJsonPath('data.0.document_notes_count', 0);
 });
 
@@ -502,5 +511,5 @@ it('does not leak document notes into the remarks column', function () {
         ->assertStatus(200)
         ->assertJsonPath('data.0.remarks', null)
         ->assertJsonPath('data.0.remarks_source', null)
-        ->assertJsonPath('data.0.document_remarks', 'Document-level note.');
+        ->assertJsonPath('data.0.document_notes.0.remarks', 'Document-level note.');
 });

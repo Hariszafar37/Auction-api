@@ -35,14 +35,12 @@ class ApprovalRecordResource extends JsonResource
             // over from an earlier decision (e.g. a reason predating an approval).
             'remarks_source' => $r['remarks_source'] ?? null,
 
-            // Latest document-review note left for this applicant from the admin
-            // user-detail page. Separate from `remarks` (profile rejection reason) —
-            // the two come from different tables and must not be conflated.
-            'document_remarks'     => $r['document_remarks'] ?? null,
-            'document_type'        => $r['document_type'] ?? null,
-            'document_status'      => $r['document_status'] ?? null,
-            'document_reviewed_at' => $r['document_reviewed_at'] ?? null,
-            'document_reviewed_by' => $r['document_reviewed_by'] ?? null,
+            // Every document-review note left for this applicant from the admin
+            // user-detail page, newest first. Notes are per-document (ID, dealer
+            // license, salesman license…), each rejectable for its own reason.
+            // Separate from `remarks` (profile rejection reason) — the two come from
+            // different tables and must not be conflated.
+            'document_notes'       => $r['document_notes'] ?? [],
             'document_notes_count' => $r['document_notes_count'] ?? 0,
         ];
     }

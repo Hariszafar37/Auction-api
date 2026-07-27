@@ -389,12 +389,17 @@ class ApprovalService
     }
 
     /**
-     * Overlay each record with the latest document-review note left for that applicant.
+     * Overlay each record with every document-review note left for that applicant.
      *
      * Document reviews live in `user_documents` (written from the admin user-detail
      * page) and are entirely separate from the profile-level `rejection_reason` that
      * feeds `remarks`. This batch-loads them by user_id so the dashboard can show both
      * without an N+1 and without altering `remarks` semantics.
+     *
+     * Notes are per-document, not per-user: a dealer typically uploads an ID, a dealer
+     * license and a salesman license, and each can be rejected for a different reason.
+     * The full set is returned (newest first) so the dashboard can show which document
+     * each note belongs to rather than collapsing them to the most recent one.
      *
      * @param  Collection<int,array<string,mixed>>  $merged
      * @return Collection<int,array<string,mixed>>
@@ -426,16 +431,16 @@ class ApprovalService
                 return $record;
             }
 
-            /** @var UserDocument $latest */
-            $latest = $docs->first();
-
             return array_merge($record, [
-                'document_remarks'         => $latest->admin_notes,
-                'document_type'            => $latest->type,
-                'document_status'          => $latest->status,
-                'document_reviewed_at'     => optional($latest->reviewed_at)->toIso8601String(),
-                'document_reviewed_by'     => $latest->reviewer?->name,
-                'document_notes_count'     => $docs->count(),
+                'document_notes'       => $docs->map(fn (UserDocument $d) => [
+                    'document_id' => $d->id,
+                    'type'        => $d->type,
+                    'status'      => $d->status,
+                    'remarks'     => $d->admin_notes,
+                    'reviewed_at' => optional($d->reviewed_at)->toIso8601String(),
+                    'reviewed_by' => $d->reviewer?->name,
+                ])->values()->all(),
+                'document_notes_count' => $docs->count(),
             ]);
         });
     }
@@ -531,11 +536,7 @@ class ApprovalService
             'remarks_source' => null,
             // Populated by attachDocumentNotes(); defaulted here so every record has
             // a stable shape whether or not the applicant has any reviewed documents.
-            'document_remarks'     => null,
-            'document_type'        => null,
-            'document_status'      => null,
-            'document_reviewed_at' => null,
-            'document_reviewed_by' => null,
+            'document_notes'       => [],
             'document_notes_count' => 0,
         ];
     }
