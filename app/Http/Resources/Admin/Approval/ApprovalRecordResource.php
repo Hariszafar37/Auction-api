@@ -31,6 +31,9 @@ class ApprovalRecordResource extends JsonResource
             'action_by'      => $r['action_by_name'],
             'action_by_id'   => $r['action_by_id'],
             'remarks'        => $r['remarks'],
+            // Whether `remarks` explains the record's CURRENT status, or is carried
+            // over from an earlier decision (e.g. a reason predating an approval).
+            'remarks_source' => $r['remarks_source'] ?? null,
 
             // Latest document-review note left for this applicant from the admin
             // user-detail page. Separate from `remarks` (profile rejection reason) —

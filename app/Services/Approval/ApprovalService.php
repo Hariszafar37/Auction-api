@@ -301,7 +301,91 @@ class ApprovalService
             $merged = $merged->filter(fn ($r) => $r['action_date'] && Carbon::parse($r['action_date'])->lte($to));
         }
 
-        return $this->attachDocumentNotes($merged->values());
+        return $this->attachHistoricalRemarks($this->attachDocumentNotes($merged->values()));
+    }
+
+    /**
+     * Qualify each record's `remarks` as current or historical, recovering a prior
+     * reason from the audit log when the live column no longer holds one.
+     *
+     * The five sources disagree about what happens to a rejection reason on approval:
+     * approveDealer/Business/Seller null it out, while POA and government approve leave
+     * it in place. So the same column meant "reason for the current status" in some rows
+     * and "leftover from a previous decision" in others, with no way to tell them apart.
+     *
+     * Rather than change what those endpoints write (the live column also feeds the
+     * user-detail page, where a reason on an approved profile would be plain wrong),
+     * this normalizes on read: a reason is `current` only when the record's status is
+     * one that owns it, otherwise it is `historical`.
+     *
+     * @param  Collection<int,array<string,mixed>>  $merged
+     * @return Collection<int,array<string,mixed>>
+     */
+    private function attachHistoricalRemarks(Collection $merged): Collection
+    {
+        // Statuses whose decision is the reason's author. Approved/pending records may
+        // still carry a reason, but it belongs to an earlier decision.
+        $ownsRemark = ['rejected', 'revision_requested'];
+
+        $needsLookup = $merged->filter(
+            fn (array $r) => trim((string) $r['remarks']) === ''
+        );
+
+        $prior = $this->priorRemarksFor($needsLookup);
+
+        return $merged->map(function (array $record) use ($ownsRemark, $prior) {
+            if (trim((string) $record['remarks']) !== '') {
+                $record['remarks_source'] = in_array($record['status'], $ownsRemark, true)
+                    ? 'current'
+                    : 'historical';
+
+                return $record;
+            }
+
+            $recovered = $prior["{$record['approval_type']}:{$record['related_id']}"] ?? null;
+
+            if ($recovered !== null) {
+                $record['remarks']        = $recovered;
+                $record['remarks_source'] = 'historical';
+            }
+
+            return $record;
+        });
+    }
+
+    /**
+     * Most recent non-empty audit remark per record, keyed "type:related_id".
+     *
+     * @param  Collection<int,array<string,mixed>>  $records
+     * @return array<string,string>
+     */
+    private function priorRemarksFor(Collection $records): array
+    {
+        if ($records->isEmpty()) {
+            return [];
+        }
+
+        // One query for the whole page-set. The whereIn pair is a cross-product, so
+        // rows are matched back on the exact "type:id" key below. Document rows can
+        // never collide here — `document` is not one of the dashboard source types.
+        $rows = ApprovalHistory::query()
+            ->whereIn('approval_type', $records->pluck('approval_type')->unique()->values())
+            ->whereIn('related_id', $records->pluck('related_id')->unique()->values())
+            ->whereNotNull('remarks')
+            ->orderBy('performed_at')
+            ->orderBy('id')
+            ->get(['approval_type', 'related_id', 'remarks']);
+
+        $map = [];
+        foreach ($rows as $row) {
+            if (trim((string) $row->remarks) === '') {
+                continue;
+            }
+            // Ordered ascending, so the last write wins = most recent remark.
+            $map["{$row->approval_type}:{$row->related_id}"] = $row->remarks;
+        }
+
+        return $map;
     }
 
     /**
@@ -443,6 +527,8 @@ class ApprovalService
             'action_by_id'   => $record->reviewed_by,
             'action_by_name' => $record->reviewer?->name,
             'remarks'        => $this->remarks($type, $record),
+            // 'current' | 'historical' | null — set by attachHistoricalRemarks().
+            'remarks_source' => null,
             // Populated by attachDocumentNotes(); defaulted here so every record has
             // a stable shape whether or not the applicant has any reviewed documents.
             'document_remarks'     => null,

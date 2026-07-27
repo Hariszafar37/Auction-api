@@ -404,3 +404,103 @@ it('still synthesizes a legacy decision entry when only document reviews exist',
         ->and($legacy['remarks'])->toBe('Legacy reason')
         ->and($entries->firstWhere('action', 'document_reviewed'))->not->toBeNull();
 });
+
+// ── Remarks provenance (fix: approveDealer/Business/Seller null out
+//    rejection_reason, while POA and government approvals keep it — the same
+//    column meant two different things with no way to tell them apart) ────────
+
+it('marks the reason on a rejected record as current', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/dealers/{$profile->user_id}/reject", ['reason' => 'Expired license'])
+        ->assertStatus(200);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.remarks', 'Expired license')
+        ->assertJsonPath('data.0.remarks_source', 'current');
+});
+
+it('recovers a prior reason from the audit log after the record is approved', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/dealers/{$profile->user_id}/reject", ['reason' => 'Expired license'])
+        ->assertStatus(200);
+
+    $this->travel(1)->minutes();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/dealers/{$profile->user_id}/approve")
+        ->assertStatus(200);
+
+    // The live column was cleared by the approve endpoint...
+    expect($profile->fresh()->rejection_reason)->toBeNull();
+
+    // ...but the dashboard still surfaces it, clearly flagged as historical.
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.status', 'approved')
+        ->assertJsonPath('data.0.remarks', 'Expired license')
+        ->assertJsonPath('data.0.remarks_source', 'historical');
+});
+
+it('flags a reason that survived approval as historical rather than current', function () {
+    $admin = approvalDashboardAdmin();
+
+    // Government approve does not clear rejection_reason, so the stale value
+    // must not be presented as the reason for the current approved status.
+    $user = User::factory()->create(['account_type' => 'government']);
+    GovProfile::create([
+        'user_id'               => $user->id,
+        'entity_name'           => 'City of Testville',
+        'entity_subtype'        => 'government',
+        'point_of_contact_name' => 'Jordan Official',
+        'phone'                 => '410-555-2000',
+        'address'               => '1 Civic Plaza',
+        'city'                  => 'Testville',
+        'state'                 => 'MD',
+        'zip'                   => '21201',
+        'approval_status'       => 'approved',
+        'rejection_reason'      => 'Old reason that outlived its decision',
+        'reviewed_by'           => $admin->id,
+        'reviewed_at'           => now(),
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=government')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.status', 'approved')
+        ->assertJsonPath('data.0.remarks', 'Old reason that outlived its decision')
+        ->assertJsonPath('data.0.remarks_source', 'historical');
+});
+
+it('leaves remarks_source null when a record has no reason at all', function () {
+    $admin = approvalDashboardAdmin();
+    apdPendingDealer();
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.remarks', null)
+        ->assertJsonPath('data.0.remarks_source', null);
+});
+
+it('does not leak document notes into the remarks column', function () {
+    $admin   = approvalDashboardAdmin();
+    $profile = apdPendingDealer();
+
+    apdReviewDocument($admin, $profile->user_id, 'Document-level note.');
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/v1/admin/approvals/dashboard?approval_type=dealer')
+        ->assertStatus(200)
+        ->assertJsonPath('data.0.remarks', null)
+        ->assertJsonPath('data.0.remarks_source', null)
+        ->assertJsonPath('data.0.document_remarks', 'Document-level note.');
+});
