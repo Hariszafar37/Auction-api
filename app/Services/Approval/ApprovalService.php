@@ -8,6 +8,7 @@ use App\Models\DealerProfile;
 use App\Models\GovProfile;
 use App\Models\PowerOfAttorney;
 use App\Models\SellerProfile;
+use App\Models\UserDocument;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -31,6 +32,18 @@ class ApprovalService
     public const TYPE_SELLER     = 'seller';
     public const TYPE_GOVERNMENT = 'government';
     public const TYPE_POA        = 'poa';
+
+    /**
+     * Audit-only approval type for per-document reviews performed from the admin
+     * user-detail page. Deliberately NOT part of self::TYPES: documents are not
+     * standalone dashboard rows, they are supporting evidence attached to a user.
+     * They surface as (a) the `document_*` fields on each dashboard record and
+     * (b) interleaved entries in that record's history timeline.
+     */
+    public const TYPE_DOCUMENT = 'document';
+
+    /** Action string used for document review audit rows. */
+    public const ACTION_DOCUMENT_REVIEWED = 'document_reviewed';
 
     public const TYPES = [
         self::TYPE_DEALER,
@@ -161,6 +174,7 @@ class ApprovalService
             'performed_by_name' => null,
             'performed_at'    => optional($record->created_at)->toIso8601String(),
             'synthesized'     => true,
+            'document_type'   => null,
         ]);
 
         $rows = ApprovalHistory::with('performer:id,name')
@@ -180,6 +194,7 @@ class ApprovalService
                     'performed_by_name' => $row->performer?->name,
                     'performed_at'      => optional($row->performed_at)->toIso8601String(),
                     'synthesized'       => false,
+                    'document_type'     => null,
                 ]);
             }
         } else {
@@ -198,11 +213,56 @@ class ApprovalService
                     'performed_by_name' => $record->reviewer?->name,
                     'performed_at'      => $reviewedAt->toIso8601String(),
                     'synthesized'       => true,
+                    'document_type'     => null,
                 ]);
             }
         }
 
+        // Document reviews are recorded against the applicant, not against this specific
+        // approval record, so they are pulled by subject_user_id and interleaved by date.
+        // Kept out of the legacy-synthesis check above on purpose: a profile with zero
+        // real approval rows must still synthesize its decision entry.
+        $entries = $entries->merge($this->documentHistoryFor($record->user_id));
+
         return $entries->sortBy('performed_at')->values();
+    }
+
+    /**
+     * Audit entries for every document review performed on an applicant.
+     *
+     * @return Collection<int,array<string,mixed>>
+     */
+    private function documentHistoryFor(?int $subjectUserId): Collection
+    {
+        if (! $subjectUserId) {
+            return collect();
+        }
+
+        $rows = ApprovalHistory::with('performer:id,name')
+            ->where('approval_type', self::TYPE_DOCUMENT)
+            ->where('subject_user_id', $subjectUserId)
+            ->orderBy('performed_at')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return collect();
+        }
+
+        // Resolve document types in one query so the timeline can say *which* document.
+        $types = UserDocument::whereIn('id', $rows->pluck('related_id')->unique())
+            ->pluck('type', 'id');
+
+        return $rows->map(fn (ApprovalHistory $row) => [
+            'action'            => $row->action,
+            'previous_status'   => $row->previous_status,
+            'new_status'        => $row->new_status,
+            'remarks'           => $row->remarks,
+            'performed_by'      => $row->performed_by,
+            'performed_by_name' => $row->performer?->name,
+            'performed_at'      => optional($row->performed_at)->toIso8601String(),
+            'synthesized'       => false,
+            'document_type'     => $types[$row->related_id] ?? null,
+        ]);
     }
 
     // ── Normalization ──────────────────────────────────────────────────────────────
@@ -241,7 +301,148 @@ class ApprovalService
             $merged = $merged->filter(fn ($r) => $r['action_date'] && Carbon::parse($r['action_date'])->lte($to));
         }
 
-        return $merged->values();
+        return $this->attachHistoricalRemarks($this->attachDocumentNotes($merged->values()));
+    }
+
+    /**
+     * Qualify each record's `remarks` as current or historical, recovering a prior
+     * reason from the audit log when the live column no longer holds one.
+     *
+     * The five sources disagree about what happens to a rejection reason on approval:
+     * approveDealer/Business/Seller null it out, while POA and government approve leave
+     * it in place. So the same column meant "reason for the current status" in some rows
+     * and "leftover from a previous decision" in others, with no way to tell them apart.
+     *
+     * Rather than change what those endpoints write (the live column also feeds the
+     * user-detail page, where a reason on an approved profile would be plain wrong),
+     * this normalizes on read: a reason is `current` only when the record's status is
+     * one that owns it, otherwise it is `historical`.
+     *
+     * @param  Collection<int,array<string,mixed>>  $merged
+     * @return Collection<int,array<string,mixed>>
+     */
+    private function attachHistoricalRemarks(Collection $merged): Collection
+    {
+        // Statuses whose decision is the reason's author. Approved/pending records may
+        // still carry a reason, but it belongs to an earlier decision.
+        $ownsRemark = ['rejected', 'revision_requested'];
+
+        $needsLookup = $merged->filter(
+            fn (array $r) => trim((string) $r['remarks']) === ''
+        );
+
+        $prior = $this->priorRemarksFor($needsLookup);
+
+        return $merged->map(function (array $record) use ($ownsRemark, $prior) {
+            if (trim((string) $record['remarks']) !== '') {
+                $record['remarks_source'] = in_array($record['status'], $ownsRemark, true)
+                    ? 'current'
+                    : 'historical';
+
+                return $record;
+            }
+
+            $recovered = $prior["{$record['approval_type']}:{$record['related_id']}"] ?? null;
+
+            if ($recovered !== null) {
+                $record['remarks']        = $recovered;
+                $record['remarks_source'] = 'historical';
+            }
+
+            return $record;
+        });
+    }
+
+    /**
+     * Most recent non-empty audit remark per record, keyed "type:related_id".
+     *
+     * @param  Collection<int,array<string,mixed>>  $records
+     * @return array<string,string>
+     */
+    private function priorRemarksFor(Collection $records): array
+    {
+        if ($records->isEmpty()) {
+            return [];
+        }
+
+        // One query for the whole page-set. The whereIn pair is a cross-product, so
+        // rows are matched back on the exact "type:id" key below. Document rows can
+        // never collide here — `document` is not one of the dashboard source types.
+        $rows = ApprovalHistory::query()
+            ->whereIn('approval_type', $records->pluck('approval_type')->unique()->values())
+            ->whereIn('related_id', $records->pluck('related_id')->unique()->values())
+            ->whereNotNull('remarks')
+            ->orderBy('performed_at')
+            ->orderBy('id')
+            ->get(['approval_type', 'related_id', 'remarks']);
+
+        $map = [];
+        foreach ($rows as $row) {
+            if (trim((string) $row->remarks) === '') {
+                continue;
+            }
+            // Ordered ascending, so the last write wins = most recent remark.
+            $map["{$row->approval_type}:{$row->related_id}"] = $row->remarks;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Overlay each record with every document-review note left for that applicant.
+     *
+     * Document reviews live in `user_documents` (written from the admin user-detail
+     * page) and are entirely separate from the profile-level `rejection_reason` that
+     * feeds `remarks`. This batch-loads them by user_id so the dashboard can show both
+     * without an N+1 and without altering `remarks` semantics.
+     *
+     * Notes are per-document, not per-user: a dealer typically uploads an ID, a dealer
+     * license and a salesman license, and each can be rejected for a different reason.
+     * The full set is returned (newest first) so the dashboard can show which document
+     * each note belongs to rather than collapsing them to the most recent one.
+     *
+     * @param  Collection<int,array<string,mixed>>  $merged
+     * @return Collection<int,array<string,mixed>>
+     */
+    private function attachDocumentNotes(Collection $merged): Collection
+    {
+        $userIds = $merged->pluck('user_id')->filter()->unique()->values();
+
+        if ($userIds->isEmpty()) {
+            return $merged;
+        }
+
+        // Only documents that actually carry a note are useful here. `admin_notes` is
+        // nullable and may also hold an empty string, so trim-filter in PHP rather than
+        // relying on driver-specific SQL (MySQL in prod, SQLite in tests).
+        $byUser = UserDocument::with('reviewer:id,name')
+            ->whereIn('user_id', $userIds)
+            ->whereNotNull('admin_notes')
+            ->orderByDesc('reviewed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (UserDocument $d) => trim((string) $d->admin_notes) !== '')
+            ->groupBy('user_id');
+
+        return $merged->map(function (array $record) use ($byUser) {
+            $docs = $byUser->get($record['user_id']);
+
+            if (! $docs || $docs->isEmpty()) {
+                return $record;
+            }
+
+            return array_merge($record, [
+                'document_notes'       => $docs->map(fn (UserDocument $d) => [
+                    'document_id' => $d->id,
+                    'type'        => $d->type,
+                    'status'      => $d->status,
+                    'remarks'     => $d->admin_notes,
+                    'reviewed_at' => optional($d->reviewed_at)->toIso8601String(),
+                    'reviewed_by' => $d->reviewer?->name,
+                ])->values()->all(),
+                'document_notes_count' => $docs->count(),
+            ]);
+        });
     }
 
     /**
@@ -331,6 +532,12 @@ class ApprovalService
             'action_by_id'   => $record->reviewed_by,
             'action_by_name' => $record->reviewer?->name,
             'remarks'        => $this->remarks($type, $record),
+            // 'current' | 'historical' | null — set by attachHistoricalRemarks().
+            'remarks_source' => null,
+            // Populated by attachDocumentNotes(); defaulted here so every record has
+            // a stable shape whether or not the applicant has any reviewed documents.
+            'document_notes'       => [],
+            'document_notes_count' => 0,
         ];
     }
 

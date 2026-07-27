@@ -34,4 +34,10 @@ class UserDocument extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    /** The admin who last reviewed this document. */
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
 }
