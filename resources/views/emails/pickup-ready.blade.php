@@ -52,7 +52,7 @@
         <a href="{{ config('app.url') }}/my/purchases/{{ $purchase->lot_id }}" class="btn">View Purchase &amp; Download Gate Pass</a>
     </div>
     <div class="footer">
-        &copy; {{ now()->year }} Colonial Auction Services, Inc.. This is an automated notification.
+        &copy; {{ now()->year }} Colonial Auction Services, Inc. This is an automated notification.
     </div>
 </div>
 </body>

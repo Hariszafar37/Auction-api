@@ -108,9 +108,14 @@ return [
     |
     */
 
+    // Intentionally NOT env-driven. MAIL_FROM_NAME was set to "${APP_NAME}", so
+    // every server sent under whatever APP_NAME happened to be configured there
+    // — production shipped mail from "CarAuction", and local still carried the
+    // framework's hello@example.com placeholder. The sender is brand identity,
+    // so it is pinned in code and cannot drift per environment.
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', 'Example'),
+        'address' => \App\Support\Brand::FROM_ADDRESS,
+        'name'    => \App\Support\Brand::NAME,
     ],
 
     /*

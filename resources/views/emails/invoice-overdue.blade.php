@@ -111,7 +111,7 @@
       </p>
     </div>
     <div class="footer">
-      &copy; {{ date('Y') }} Colonial Auction Services, Inc.. All rights reserved.
+      &copy; {{ date('Y') }} Colonial Auction Services, Inc. All rights reserved.
     </div>
   </div>
 </body>

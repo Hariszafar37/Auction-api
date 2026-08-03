@@ -138,7 +138,7 @@
 </div>
 
 <div class="footer">
-    This gate pass authorizes the release of the above vehicle to the named buyer only. Valid only when payment is confirmed in our system. &copy; {{ now()->year }} Colonial Auction Services, Inc..
+    This gate pass authorizes the release of the above vehicle to the named buyer only. Valid only when payment is confirmed in our system. &copy; {{ now()->year }} Colonial Auction Services, Inc.
 </div>
 
 </body>

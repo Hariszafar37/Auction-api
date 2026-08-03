@@ -48,7 +48,7 @@
         <a href="{{ config('app.url') }}/my/purchases/{{ $transportRequest->lot_id }}" class="btn">View Purchase Details</a>
     </div>
     <div class="footer">
-        &copy; {{ now()->year }} Colonial Auction Services, Inc.. This is an automated notification.
+        &copy; {{ now()->year }} Colonial Auction Services, Inc. This is an automated notification.
     </div>
 </div>
 </body>
