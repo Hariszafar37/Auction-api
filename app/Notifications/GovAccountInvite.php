@@ -30,7 +30,7 @@ class GovAccountInvite extends Notification
         return (new MailMessage)
             ->subject('You have been invited to join Colonial Auction Services, Inc.')
             ->greeting('Hello!')
-            ->line('An administrator has created a government/organization account for you on Colonial Auction Services, Inc..')
+            ->line('An administrator has created a government/organization account for you on Colonial Auction Services, Inc.')
             ->line('Click the button below to accept your invitation and set up your password.')
             ->action('Accept Invitation', $inviteUrl)
             ->line('If you were not expecting this invitation, you may safely ignore this email.');

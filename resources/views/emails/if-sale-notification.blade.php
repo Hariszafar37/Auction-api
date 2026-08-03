@@ -90,7 +90,7 @@
 
     <div class="footer">
         <p>
-            This email was sent by <strong>Colonial Auction Services, Inc.</strong>.<br>
+            This email was sent by <strong>Colonial Auction Services, Inc.</strong><br>
             If you have questions, please contact us.
         </p>
     </div>
