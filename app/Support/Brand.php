@@ -30,7 +30,7 @@ class Brand
      * (local still had the framework's hello@example.com placeholder). The
      * sending domain must stay SPF/DKIM-authorised on the mail provider.
      */
-    public const FROM_ADDRESS = 'noreply@colonialautoauction.com';
+    public const FROM_ADDRESS = 'noreply@colonialauctions.com';
 
     /** Path, relative to public/, of the canonical brand logo. */
     public const LOGO_PATH = 'images/colonial-logo.png';

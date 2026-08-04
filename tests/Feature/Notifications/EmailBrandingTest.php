@@ -38,7 +38,7 @@ it('sends all mail from the brand identity, never the per-server env', function 
 
     expect($mail['from']['name'])->toBe('Colonial Auction Services')
         ->and($mail['from']['name'])->not->toContain('CarAuction')
-        ->and($mail['from']['address'])->toBe('noreply@colonialautoauction.com')
+        ->and($mail['from']['address'])->toBe('noreply@colonialauctions.com')
         ->and($mail['from']['address'])->not->toContain('example.com');
 });
 
@@ -49,7 +49,7 @@ it('does not let MAIL_FROM_* env values override the brand sender', function () 
     try {
         $mail = require config_path('mail.php');
 
-        expect($mail['from']['address'])->toBe('noreply@colonialautoauction.com')
+        expect($mail['from']['address'])->toBe('noreply@colonialauctions.com')
             ->and($mail['from']['name'])->toBe('Colonial Auction Services');
     } finally {
         putenv('MAIL_FROM_ADDRESS');
