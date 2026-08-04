@@ -61,6 +61,18 @@ test('all logo-bearing templates reference the canonical logo path', function ()
     }
 });
 
+// The markdown mail header is not in the list above because it resolves the
+// logo through App\Support\Brand rather than hard-coding the path. Assert the
+// helper lands on the same canonical file, so the two mechanisms cannot drift.
+
+test('markdown mail header resolves the canonical logo path', function () {
+    expect(\App\Support\Brand::LOGO_PATH)->toBe(LOGO_PATH)
+        ->and(\App\Support\Brand::logoUrl())->toEndWith(LOGO_PATH);
+
+    $header = file_get_contents(resource_path('views/vendor/mail/html/header.blade.php'));
+    expect($header)->toContain('Brand::logoUrl()');
+});
+
 // ─── Live render ─────────────────────────────────────────────────────────────
 // Proves the invoice PDF actually renders and embeds the current logo bytes.
 // The gate pass and admin summary use the identical base64 embed line, so this
