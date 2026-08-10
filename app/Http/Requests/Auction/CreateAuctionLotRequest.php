@@ -26,9 +26,27 @@ class CreateAuctionLotRequest extends FormRequest
             'reserve_price'            => ['nullable', 'integer', 'min:0'],
             'countdown_seconds'        => ['nullable', 'integer', 'min:10', 'max:300'],
             // Per-lot closing time — overrides the auction-wide scheduled_end_at.
-            // Used to run lots one after another like a live ring.
-            'scheduled_close_at'       => ['nullable', 'date'],
+            // Used to run lots one after another like a live ring. Must land
+            // after the auction starts: a time before it would put the lot into
+            // countdown the moment the auction goes live and no-sale a vehicle
+            // that never got a chance to take a bid.
+            'scheduled_close_at'       => ['nullable', 'date', 'after:' . $this->auctionStartsAt()],
             'requires_seller_approval' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /** Start time of the auction this lot is being added to, for the after: rule. */
+    private function auctionStartsAt(): string
+    {
+        $startsAt = $this->route('auction')?->starts_at;
+
+        return $startsAt ? $startsAt->toDateTimeString() : 'now';
+    }
+
+    public function messages(): array
+    {
+        return [
+            'scheduled_close_at.after' => 'The lot closing time must be after the auction starts.',
         ];
     }
 }

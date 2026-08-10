@@ -9,6 +9,7 @@ use App\Models\AuctionLot;
 use App\Models\Vehicle;
 use App\Models\User;
 use App\Services\Auction\AuctionService;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -327,3 +328,51 @@ it('refuses to update a lot that has already closed', function () {
         'scheduled_close_at' => now()->addHour()->toDateTimeString(),
     ]);
 })->throws(Illuminate\Validation\ValidationException::class);
+
+// ── Guard: a per-lot time before the auction start would no-sale a vehicle ────
+
+it('rejects a per-lot closing time that lands before the auction starts', function () {
+    $this->seed(RolePermissionSeeder::class);
+
+    $auction = $this->createAuction([
+        'status'    => AuctionStatus::Scheduled,
+        'starts_at' => now()->addDays(2),
+    ]);
+
+    [$vehicle] = $this->createVehicleWithSeller(['status' => 'available']);
+
+    $response = $this->actingAsAdmin()
+        ->postJson("/api/v1/admin/auctions/{$auction->id}/lots", [
+            'vehicle_id'         => $vehicle->id,
+            'starting_bid'       => 500,
+            // A full day before the auction even opens.
+            'scheduled_close_at' => now()->addDay()->toDateTimeString(),
+        ]);
+
+    $this->assertValidationError($response, 'scheduled_close_at');
+});
+
+it('accepts a per-lot closing time after the auction starts', function () {
+    $this->seed(RolePermissionSeeder::class);
+
+    $auction = $this->createAuction([
+        'status'    => AuctionStatus::Scheduled,
+        'starts_at' => now()->addDays(2),
+    ]);
+
+    [$vehicle] = $this->createVehicleWithSeller(['status' => 'available']);
+
+    $closeAt = now()->addDays(2)->addHours(3);
+
+    $response = $this->actingAsAdmin()
+        ->postJson("/api/v1/admin/auctions/{$auction->id}/lots", [
+            'vehicle_id'         => $vehicle->id,
+            'starting_bid'       => 500,
+            'scheduled_close_at' => $closeAt->toDateTimeString(),
+        ]);
+
+    $response->assertStatus(201);
+
+    expect(AuctionLot::latest('id')->first()->scheduled_close_at->timestamp)
+        ->toBe($closeAt->timestamp);
+});

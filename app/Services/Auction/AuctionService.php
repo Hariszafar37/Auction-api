@@ -16,7 +16,6 @@ use App\Models\Vehicle;
 use App\Services\Payment\SellerSettlementService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuctionService
@@ -167,24 +166,22 @@ class AuctionService
      * or the scheduler transitioned it — because a pending lot accepts no bids
      * and cannot enter its countdown.
      *
+     * Done as one mass update rather than a loop over openLot(). LotStatusChanged
+     * is ShouldBroadcastNow, so opening lots individually would fire one
+     * synchronous Reverb call per lot inside the request that started the
+     * auction. It would also be redundant: clients refetch the whole lot list
+     * when the AuctionStarted broadcast that follows this call arrives.
+     *
      * @return int number of lots opened
      */
     public function openPendingLots(Auction $auction): int
     {
-        $opened = 0;
-
-        $auction->lots()
+        return $auction->lots()
             ->where('status', LotStatus::Pending->value)
-            ->each(function (AuctionLot $lot) use (&$opened) {
-                try {
-                    $this->lotService->openLot($lot);
-                    $opened++;
-                } catch (\Throwable $e) {
-                    Log::error("Failed to auto-open lot #{$lot->id}: " . $e->getMessage());
-                }
-            });
-
-        return $opened;
+            ->update([
+                'status'    => LotStatus::Open->value,
+                'opened_at' => now(),
+            ]);
     }
 
     public function endAuction(Auction $auction): Auction
