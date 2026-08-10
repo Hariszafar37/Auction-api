@@ -20,6 +20,10 @@ class CreateAuctionRequest extends FormRequest
             'location_id' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
             'timezone'    => ['nullable', 'timezone'],
             'starts_at'   => ['required', 'date', 'after:now'],
+            // Auction-wide closing time. Lots without their own scheduled_close_at
+            // start their final countdown at this moment. Optional — omit it to
+            // keep the sale fully manual.
+            'scheduled_end_at' => ['nullable', 'date', 'after:starts_at'],
             'notes'       => ['nullable', 'string'],
         ];
     }

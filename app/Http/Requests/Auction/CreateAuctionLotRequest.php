@@ -25,6 +25,9 @@ class CreateAuctionLotRequest extends FormRequest
             'starting_bid'             => ['required', 'integer', 'min:100'],
             'reserve_price'            => ['nullable', 'integer', 'min:0'],
             'countdown_seconds'        => ['nullable', 'integer', 'min:10', 'max:300'],
+            // Per-lot closing time — overrides the auction-wide scheduled_end_at.
+            // Used to run lots one after another like a live ring.
+            'scheduled_close_at'       => ['nullable', 'date'],
             'requires_seller_approval' => ['nullable', 'boolean'],
         ];
     }

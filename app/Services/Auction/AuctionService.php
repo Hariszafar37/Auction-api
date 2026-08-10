@@ -14,7 +14,9 @@ use App\Models\Location;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\Payment\SellerSettlementService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuctionService
@@ -31,24 +33,36 @@ class AuctionService
         [$locationId, $locationStr] = $this->resolveLocation($data);
 
         return Auction::create([
-            'title'       => $data['title'],
-            'description' => $data['description'] ?? null,
-            'location'    => $locationStr,
-            'location_id' => $locationId,
-            'timezone'    => $data['timezone'] ?? 'America/New_York',
-            'starts_at'   => $data['starts_at'],
-            'status'      => AuctionStatus::Draft,
-            'created_by'  => $creator->id,
-            'notes'       => $data['notes'] ?? null,
+            'title'            => $data['title'],
+            'description'      => $data['description'] ?? null,
+            'location'         => $locationStr,
+            'location_id'      => $locationId,
+            'timezone'         => $data['timezone'] ?? 'America/New_York',
+            'starts_at'        => $data['starts_at'],
+            'scheduled_end_at' => $data['scheduled_end_at'] ?? null,
+            'status'           => AuctionStatus::Draft,
+            'created_by'       => $creator->id,
+            'notes'            => $data['notes'] ?? null,
         ]);
     }
 
     public function updateAuction(Auction $auction, array $data): Auction
     {
-        if (! in_array($auction->status, [AuctionStatus::Draft, AuctionStatus::Scheduled])) {
+        $isLive = $auction->status === AuctionStatus::Live;
+
+        if (! $isLive && ! in_array($auction->status, [AuctionStatus::Draft, AuctionStatus::Scheduled])) {
             throw ValidationException::withMessages([
-                'auction' => ['Only draft or scheduled auctions can be updated.'],
+                'auction' => ['Only draft, scheduled or live auctions can be updated.'],
             ]);
+        }
+
+        // A live auction is mid-sale: only its closing time may still be moved.
+        // Everything else (title, location, start time) is frozen once bidding
+        // is under way.
+        if ($isLive) {
+            $auction->update($this->resolveScheduledEnd($auction, $data));
+
+            return $auction->fresh();
         }
 
         $updates = array_filter([
@@ -69,9 +83,43 @@ class AuctionService
             $updates['location_id'] = null;
         }
 
+        $updates += $this->resolveScheduledEnd($auction, $data);
+
         $auction->update($updates);
 
         return $auction->fresh();
+    }
+
+    /**
+     * Validate and normalise a scheduled_end_at change.
+     *
+     * Returns [] when the key was absent (leave the stored value alone), or
+     * ['scheduled_end_at' => <value|null>] when it was supplied — sending null
+     * explicitly clears the schedule.
+     *
+     * @throws ValidationException closing time is not after the auction start
+     */
+    private function resolveScheduledEnd(Auction $auction, array $data): array
+    {
+        if (! array_key_exists('scheduled_end_at', $data)) {
+            return [];
+        }
+
+        $value = $data['scheduled_end_at'];
+
+        if ($value === null) {
+            return ['scheduled_end_at' => null];
+        }
+
+        $startsAt = isset($data['starts_at']) ? Carbon::parse($data['starts_at']) : $auction->starts_at;
+
+        if ($startsAt && Carbon::parse($value)->lessThanOrEqualTo($startsAt)) {
+            throw ValidationException::withMessages([
+                'scheduled_end_at' => ['The closing time must be after the auction start time.'],
+            ]);
+        }
+
+        return ['scheduled_end_at' => $value];
     }
 
     // ─── Lifecycle transitions ───────────────────────────────────────────────────
@@ -105,9 +153,38 @@ class AuctionService
 
         $auction->update(['status' => AuctionStatus::Live]);
 
+        $this->openPendingLots($auction);
+
         broadcast(new AuctionStarted($auction));
 
         return $auction->fresh();
+    }
+
+    /**
+     * Open every lot still sitting in pending so bidding can begin.
+     *
+     * Called the moment an auction goes live — whether an admin pressed Start
+     * or the scheduler transitioned it — because a pending lot accepts no bids
+     * and cannot enter its countdown.
+     *
+     * @return int number of lots opened
+     */
+    public function openPendingLots(Auction $auction): int
+    {
+        $opened = 0;
+
+        $auction->lots()
+            ->where('status', LotStatus::Pending->value)
+            ->each(function (AuctionLot $lot) use (&$opened) {
+                try {
+                    $this->lotService->openLot($lot);
+                    $opened++;
+                } catch (\Throwable $e) {
+                    Log::error("Failed to auto-open lot #{$lot->id}: " . $e->getMessage());
+                }
+            });
+
+        return $opened;
     }
 
     public function endAuction(Auction $auction): Auction
@@ -252,6 +329,7 @@ class AuctionService
                 'starting_bid'             => $data['starting_bid'] ?? 100,
                 'reserve_price'            => $data['reserve_price'] ?? null,
                 'countdown_seconds'        => $data['countdown_seconds'] ?? 30,
+                'scheduled_close_at'       => $data['scheduled_close_at'] ?? null,
                 'requires_seller_approval' => $data['requires_seller_approval'] ?? false,
                 'dealer_only'              => $dealerOnly,
                 'status'                   => LotStatus::Pending,
@@ -266,27 +344,45 @@ class AuctionService
             // Notify any subscribers who signed up for "Notify Me" on this vehicle.
             NotifyVehicleSubscribers::dispatch($vehicle->id, $auction->id);
 
-            return $lot->load('vehicle');
+            return $lot->load(['vehicle', 'auction']);
         });
     }
 
     public function updateLot(AuctionLot $lot, array $data): AuctionLot
     {
-        if (! in_array($lot->status, [LotStatus::Pending])) {
+        // Once a lot has closed nothing about it may change. While it is open or
+        // counting down only its scheduled closing time can still be moved — the
+        // money fields (starting bid, reserve) are frozen the moment bidding can
+        // begin.
+        if ($lot->isTerminal()) {
             throw ValidationException::withMessages([
-                'lot' => ['Only pending lots can be updated.'],
+                'lot' => ['A closed lot can no longer be updated.'],
             ]);
         }
 
-        $lot->update(array_filter([
-            'lot_number'               => $data['lot_number'] ?? null,
-            'starting_bid'             => $data['starting_bid'] ?? null,
-            'reserve_price'            => $data['reserve_price'] ?? null,
-            'countdown_seconds'        => $data['countdown_seconds'] ?? null,
-            'requires_seller_approval' => $data['requires_seller_approval'] ?? null,
-        ], fn ($v) => $v !== null));
+        $updates = [];
 
-        return $lot->fresh('vehicle');
+        if ($lot->status === LotStatus::Pending) {
+            $updates = array_filter([
+                'lot_number'               => $data['lot_number'] ?? null,
+                'starting_bid'             => $data['starting_bid'] ?? null,
+                'reserve_price'            => $data['reserve_price'] ?? null,
+                'countdown_seconds'        => $data['countdown_seconds'] ?? null,
+                'requires_seller_approval' => $data['requires_seller_approval'] ?? null,
+            ], fn ($v) => $v !== null);
+        }
+
+        // Sending the key with null explicitly clears the lot's own schedule,
+        // dropping it back to the auction-wide closing time.
+        if (array_key_exists('scheduled_close_at', $data)) {
+            $updates['scheduled_close_at'] = $data['scheduled_close_at'];
+        }
+
+        if ($updates !== []) {
+            $lot->update($updates);
+        }
+
+        return $lot->fresh(['vehicle', 'auction']);
     }
 
     public function removeLot(AuctionLot $lot): void

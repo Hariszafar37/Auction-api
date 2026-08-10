@@ -20,6 +20,9 @@ class AuctionResource extends JsonResource
             'location_id' => $this->location_id,
             'timezone'    => $this->timezone,
             'starts_at'   => $this->safeIso($this->starts_at),
+            // Planned closing time (null = no schedule). Distinct from ends_at,
+            // which records when the auction actually ended.
+            'scheduled_end_at' => $this->safeIso($this->scheduled_end_at),
             'ends_at'     => $this->safeIso($this->ends_at),
             'status'      => $this->status->value,
             'status_label'=> $this->status->label(),

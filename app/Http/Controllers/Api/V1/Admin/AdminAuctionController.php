@@ -66,7 +66,7 @@ class AdminAuctionController extends Controller
     public function show(Auction $auction): JsonResponse
     {
         return $this->success(
-            new AuctionResource($auction->load(['lots.vehicle', 'creator']))
+            new AuctionResource($auction->load(['lots.vehicle', 'lots.auction', 'creator']))
         );
     }
 
