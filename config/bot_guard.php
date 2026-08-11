@@ -42,6 +42,12 @@ return [
 
         // Field name of the hidden decoy. Deliberately plausible-looking so that
         // an autofill-driven scraper is tempted to populate it.
+        //
+        // ⚠️ The frontend hardcodes 'website' (RegisterForm.tsx). Changing this
+        // env var ALONE rejects every genuine registration, because the browser
+        // keeps sending a field the backend no longer requires. Only rotate it
+        // together with a matching frontend deploy — and deploy the frontend
+        // first, exactly as for the initial rollout.
         'honeypot_field' => env('BOT_GUARD_HONEYPOT_FIELD', 'website'),
 
         // A human cannot read, tab through and complete the registration form in
