@@ -23,7 +23,7 @@ it('assigns a bidder number through the registration endpoint', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ]);
+    ] + botGuardFields());
 
     $response->assertStatus(201);
 
