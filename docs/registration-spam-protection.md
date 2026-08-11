@@ -230,8 +230,31 @@ cannot disagree about what is safe to delete.
 
 **`/admin/spam-registrations`** — review every account above the boundary, see
 why each one looks automated, untick anything you want to keep, and delete.
-Requires the `users.purge` permission (admin only; staff hold `users.view` but
-deliberately not this).
+
+**Access is restricted to named operators, not to administrators in general.**
+The original cleanup is finished and the console permanently deletes accounts,
+so three gates all have to pass: `role:admin`, the `users.purge` permission, and
+`can.purge.spam`, which checks the caller's email against
+`config('bot_guard.purge_allowlist')`.
+
+```env
+BOT_GUARD_PURGE_ALLOWLIST=zeeshan.sardar+10@provelopers.net
+```
+
+Comma-separated, case-insensitive, whitespace-tolerant. Matching is on **email
+rather than user id** because ids differ between local, staging and production —
+pinning one would silently grant the wrong person, or nobody, outside the
+environment it was written for. An empty or mistyped value **denies everyone**;
+this gate fails closed by design.
+
+Anyone else gets **404, not 403** — an administrator who is not on the allowlist
+has no need to learn the console exists. Denials are logged.
+
+The API returns `can_purge_spam` on the user payload, computed from the same
+helper the middleware uses, and the sidebar item is hidden unless it is true. A
+nav item declaring a capability is hidden whenever no capabilities are passed, so
+the call sites that supply only a role fail closed. **Hiding the link is
+presentation only — the API enforces access independently.**
 
 The page shows, per account: the bot-signal score for the name, the registering
 IP, the status, and — for anything the server refuses to delete — exactly what

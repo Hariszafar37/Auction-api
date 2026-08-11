@@ -79,4 +79,28 @@ return [
 
     'name_heuristic' => env('BOT_GUARD_NAME_HEURISTIC', 'reject'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Who may reach the spam purge console
+    |--------------------------------------------------------------------------
+    |
+    | The cleanup is finished, so this capability is no longer something every
+    | administrator should hold. It permanently deletes user accounts, and the
+    | fewer people who can reach it the better.
+    |
+    | Comma-separated email addresses. Matching is on EMAIL rather than user id
+    | on purpose: ids differ between local, staging and production, so pinning
+    | one would silently grant the wrong person — or nobody — outside the
+    | environment it was written for. Comparison is case-insensitive and trimmed.
+    |
+    | An empty list denies EVERYONE. That is deliberate: this gate must fail
+    | closed, so a blank or mistyped value locks the door rather than opening it.
+    |
+    | This is checked IN ADDITION to `role:admin` and the `users.purge`
+    | permission, not instead of them.
+    |
+    */
+
+    'purge_allowlist' => env('BOT_GUARD_PURGE_ALLOWLIST', 'zeeshan.sardar+10@provelopers.net'),
+
 ];
