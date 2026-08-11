@@ -55,6 +55,16 @@ class AuctionLotResource extends JsonResource
             'countdown_seconds'    => $this->countdown_seconds,
             'countdown_extensions' => $this->countdown_extensions,
 
+            // Scheduled close — this lot's own time (null = inherits the auction's).
+            'scheduled_close_at' => $this->safeIso($this->scheduled_close_at),
+            // The time the countdown will actually start: the lot's own value, or
+            // the auction-wide fallback. Only resolvable when the auction relation
+            // is loaded — guarded so a lot collection never triggers an N+1.
+            'effective_close_at' => $this->safeIso(
+                $this->scheduled_close_at
+                    ?? ($this->relationLoaded('auction') ? $this->auction?->scheduled_end_at : null)
+            ),
+
             'dealer_only'              => $this->dealer_only,
 
             // If Sale
