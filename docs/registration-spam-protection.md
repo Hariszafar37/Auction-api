@@ -56,7 +56,10 @@ Two of the endpoints also leaked account existence (see "Enumeration" below).
 | `routes/api.php` | Throttles applied to all six public auth routes |
 | `AuthController::resendVerification()` | Enumeration oracle closed |
 | `AuthController::forgotPassword()` | Enumeration oracle closed |
-| `app/Console/Commands/PurgeSpamRegistrations.php` | Reviewable cleanup of existing rows |
+| `app/Services/Admin/SpamRegistrationScanner.php` | Shared scan/purge logic — the single source of truth on what is safe to delete |
+| `app/Console/Commands/PurgeSpamRegistrations.php` | CLI front-end for the scanner |
+| `app/Http/Controllers/Api/V1/Admin/AdminSpamRegistrationController.php` | Admin console endpoints |
+| `database/seeders/RolePermissionSeeder.php` | New `users.purge` permission |
 
 ### Frontend
 
@@ -65,6 +68,9 @@ Two of the endpoints also leaked account existence (see "Enumeration" below).
 | `src/modules/auth/components/RegisterForm.tsx` | Sends the hidden decoy + fill duration |
 | `src/modules/auth/types.ts` | `website` and `form_elapsed_ms` on `RegisterPayload` |
 | `src/lib/api/errors.ts` | Friendly copy for HTTP 429 |
+| `src/app/admin/spam-registrations/page.tsx` | Purge console route |
+| `src/modules/admin/components/SpamRegistrationPurge.tsx` | Review table, selection, typed confirmation |
+| `src/features/dashboard/config/navigation.ts` | "Spam Cleanup" nav item (admin only) |
 
 ## The three layers
 
@@ -145,6 +151,21 @@ If the two cannot be sequenced, ship the backend with
 `true`. In that mode the decoy degrades to a conventional honeypot (rejected
 only if filled) and everything else stays active.
 
+### ⚠️ The `users.purge` permission must be seeded
+
+The admin purge console is gated behind a new permission. Until it exists in the
+database, `permission:users.purge` has nothing to match and the route returns
+403 for everyone — including admins.
+
+```bash
+php artisan db:seed --class=RolePermissionSeeder
+```
+
+The seeder is idempotent (`firstOrCreate` throughout, covered by
+`SeederIdempotencyTest`), so re-running it on an existing environment is safe.
+`$admin->syncPermissions($permissions)` picks the new permission up
+automatically; staff's list is explicit and deliberately excludes it.
+
 ### ⚠️ `TRUSTED_PROXIES` must be set
 
 The API sits behind an AWS ALB. With `TRUSTED_PROXIES` unset, `$request->ip()`
@@ -180,6 +201,32 @@ BOT_GUARD_MAX_FORM_AGE_SECONDS=86400
 3. `BOT_GUARD_ENABLED=false` disables everything, as a last resort.
 
 ## Cleaning up the existing rows
+
+Two front-ends, both driving the same `SpamRegistrationScanner` service so they
+cannot disagree about what is safe to delete.
+
+### Admin console (no server access needed)
+
+**`/admin/spam-registrations`** — review every account above the boundary, see
+why each one looks automated, untick anything you want to keep, and delete.
+Requires the `users.purge` permission (admin only; staff hold `users.view` but
+deliberately not this).
+
+The page shows, per account: the bot-signal score for the name, the registering
+IP, the status, and — for anything the server refuses to delete — exactly what
+is holding it (`invoices(2)`, `bids(14)`, `privileged role`). Deleting requires
+typing `DELETE` into a confirmation box.
+
+> **This is not a command runner.** An endpoint that executes arbitrary artisan
+> commands over HTTP is remote code execution: one stolen admin token, one XSS
+> foothold, and the server is gone. The only action reachable from the browser
+> is "delete spam registrations", and even that is not taken on trust — the
+> selection the page sends is a *request*. `SpamRegistrationScanner::purge()`
+> re-derives eligibility for every id from the live database before touching
+> anything, so a tampered request asking to delete user 1 gets the same refusal
+> as a polite one. Ids it rejects come back under `skipped` with a reason.
+
+### CLI
 
 `users:purge-spam` is a **dry run unless `--force` is passed**. Deleting
 production users is irreversible, so the safety model is deny-by-default:

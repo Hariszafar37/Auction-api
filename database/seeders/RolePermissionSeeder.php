@@ -29,6 +29,10 @@ class RolePermissionSeeder extends Seeder
             // Users
             'users.view',
             'users.manage',
+            // Bulk, irreversible deletion of spam registrations. Deliberately
+            // separate from users.manage so it can be withheld — staff hold
+            // users.view but must never reach the purge console.
+            'users.purge',
 
             // Dealers
             'dealers.view',

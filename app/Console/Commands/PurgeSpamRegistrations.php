@@ -2,26 +2,16 @@
 
 namespace App\Console\Commands;
 
-use App\Models\User;
+use App\Services\Admin\SpamRegistrationScanner;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
- * Removes the accounts created by the registration list-bombing campaign.
+ * CLI front-end for SpamRegistrationScanner. The admin purge console at
+ * /admin/spam-registrations drives exactly the same service, so the two cannot
+ * disagree about what is safe to delete.
  *
  * Runs as a DRY RUN unless --force is passed: it prints exactly what it would
- * delete and changes nothing. Nothing is ever removed without a second,
- * explicit invocation.
- *
- * Deleting production users is irreversible, so the safety model is
- * deny-by-default. The command discovers every table holding a foreign key to
- * `users` straight from the live schema, and any user with a row in a table
- * outside the allowlist below is SKIPPED and reported rather than deleted. A
- * table added by a future migration therefore blocks deletion automatically
- * instead of being silently cascaded away.
+ * delete and changes nothing.
  */
 class PurgeSpamRegistrations extends Command
 {
@@ -33,83 +23,29 @@ class PurgeSpamRegistrations extends Command
 
     protected $description = 'Review and remove spam registrations created by the bot signup campaign';
 
-    /**
-     * Tables that hold nothing but the account scaffolding itself. Rows here are
-     * expected on any account, spam or not, and do not indicate real activity.
-     *
-     * Anything NOT listed here — bids, invoices, vehicles, disputes, documents,
-     * power of attorney, settlements — marks the user as having real history and
-     * takes them out of scope entirely.
-     */
-    private const ACCOUNT_SCAFFOLDING = [
-        'buyer_profiles',
-        'dealer_profiles',
-        'business_profiles',
-        'seller_profiles',
-        'gov_profiles',
-        'user_account_information',
-        'user_dealer_information',
-        'user_billing_information',
-        'user_business_information',
-        'account_actions',
-        'notifications',
-        'personal_access_tokens',
-        'sessions',
-    ];
-
-    public function handle(): int
+    public function handle(SpamRegistrationScanner $scanner): int
     {
         $afterId = (int) $this->option('after-id');
         $keep    = array_map('intval', (array) $this->option('keep'));
         $force   = (bool) $this->option('force');
 
         $this->info("Scanning users with id > {$afterId}" . ($keep ? ' (keeping ' . implode(', ', $keep) . ')' : ''));
+        $this->line(sprintf('  %d table(s) count as real activity.', count($scanner->activityTables())));
 
-        $referencingTables = $this->tablesReferencingUsers();
-        $activityTables    = array_diff_key($referencingTables, array_flip(self::ACCOUNT_SCAFFOLDING));
+        $candidates = $scanner->scan($afterId, $keep);
 
-        $this->line(sprintf(
-            '  %d table(s) reference users; %d of them count as real activity.',
-            count($referencingTables),
-            count($activityTables),
-        ));
-
-        /** @var Collection<int, User> $candidates */
-        $candidates = User::query()
-            ->where('id', '>', $afterId)
-            ->when($keep, fn ($q) => $q->whereNotIn('id', $keep))
-            ->orderBy('id')
-            ->get();
-
-        if ($candidates->isEmpty()) {
+        if ($candidates === []) {
             $this->info('Nothing to do — no users matched.');
             return self::SUCCESS;
         }
 
-        $deletable = [];
-        $skipped   = [];
-
-        foreach ($candidates as $user) {
-            // Never touch privileged accounts, whatever their id.
-            if ($user->hasAnyRole(['admin', 'staff'])) {
-                $skipped[] = [$user, 'privileged role'];
-                continue;
-            }
-
-            $activity = $this->activityFor($user, $activityTables);
-
-            if ($activity !== []) {
-                $skipped[] = [$user, implode(', ', $activity)];
-                continue;
-            }
-
-            $deletable[] = $user;
-        }
+        $deletable = array_values(array_filter($candidates, fn (array $row) => $row['deletable']));
+        $skipped   = array_values(array_filter($candidates, fn (array $row) => ! $row['deletable']));
 
         $this->renderReport($deletable, $skipped);
 
         if ($path = $this->option('export')) {
-            $this->export((string) $path, $deletable, $skipped);
+            $this->export((string) $path, $candidates);
         }
 
         if ($deletable === []) {
@@ -131,107 +67,21 @@ class PurgeSpamRegistrations extends Command
             return self::SUCCESS;
         }
 
-        return $this->delete($deletable);
-    }
+        $result = $scanner->purge(array_column($deletable, 'id'), $afterId);
 
-    /**
-     * Every table with a foreign key pointing at users, read from the live schema
-     * rather than hardcoded, mapped to the columns that reference it.
-     *
-     * MySQL answers this in a single information_schema query. Everything else —
-     * notably the SQLite database the test suite runs on — falls back to
-     * per-table introspection, which is correct but far too slow to use against
-     * a production schema of this size.
-     *
-     * @return array<string, list<string>>
-     */
-    private function tablesReferencingUsers(): array
-    {
-        return DB::connection()->getDriverName() === 'mysql'
-            ? $this->tablesReferencingUsersViaInformationSchema()
-            : $this->tablesReferencingUsersViaIntrospection();
-    }
-
-    /**
-     * @return array<string, list<string>>
-     */
-    private function tablesReferencingUsersViaInformationSchema(): array
-    {
-        $rows = DB::select(
-            'SELECT TABLE_NAME AS `table_name`, COLUMN_NAME AS `column_name`
-               FROM information_schema.KEY_COLUMN_USAGE
-              WHERE TABLE_SCHEMA = DATABASE()
-                AND REFERENCED_TABLE_NAME = ?
-                AND TABLE_NAME <> ?',
-            ['users', 'users'],
-        );
-
-        $map = [];
-
-        foreach ($rows as $row) {
-            $map[$row->table_name][] = $row->column_name;
+        foreach ($result['skipped'] as $failure) {
+            $this->error("  Could not delete user {$failure['id']}: {$failure['reason']}");
         }
 
-        return array_map('array_unique', $map);
+        $this->newLine();
+        $this->info(sprintf('Deleted %d of %d user(s).', count($result['deleted']), count($deletable)));
+
+        return $result['skipped'] === [] ? self::SUCCESS : self::FAILURE;
     }
 
     /**
-     * @return array<string, list<string>>
-     */
-    private function tablesReferencingUsersViaIntrospection(): array
-    {
-        $map = [];
-
-        foreach (Schema::getTableListing() as $table) {
-            // Some drivers report schema-qualified names ("main.users").
-            $table = str_contains($table, '.') ? substr($table, strrpos($table, '.') + 1) : $table;
-
-            if ($table === 'users') {
-                continue;
-            }
-
-            foreach (Schema::getForeignKeys($table) as $foreignKey) {
-                if (($foreignKey['foreign_table'] ?? null) !== 'users') {
-                    continue;
-                }
-
-                foreach ($foreignKey['columns'] ?? [] as $column) {
-                    $map[$table][] = $column;
-                }
-            }
-        }
-
-        return array_map('array_unique', $map);
-    }
-
-    /**
-     * @param  array<string, list<string>> $activityTables
-     * @return list<string> human-readable descriptions of what this user has done
-     */
-    private function activityFor(User $user, array $activityTables): array
-    {
-        $found = [];
-
-        foreach ($activityTables as $table => $columns) {
-            $count = DB::table($table)
-                ->where(function ($query) use ($columns, $user) {
-                    foreach ($columns as $column) {
-                        $query->orWhere($column, $user->id);
-                    }
-                })
-                ->count();
-
-            if ($count > 0) {
-                $found[] = "{$table}({$count})";
-            }
-        }
-
-        return $found;
-    }
-
-    /**
-     * @param list<User>                $deletable
-     * @param list<array{0:User,1:string}> $skipped
+     * @param list<array<string, mixed>> $deletable
+     * @param list<array<string, mixed>> $skipped
      */
     private function renderReport(array $deletable, array $skipped): void
     {
@@ -240,14 +90,15 @@ class PurgeSpamRegistrations extends Command
 
         if ($deletable !== []) {
             $this->table(
-                ['ID', 'Name', 'Email', 'Status', 'Registered IP', 'Joined'],
-                array_map(fn (User $u) => [
-                    $u->id,
-                    mb_strimwidth((string) $u->name, 0, 34, '…'),
-                    mb_strimwidth((string) $u->email, 0, 34, '…'),
-                    $u->status,
-                    $u->registration_ip_address ?? '—',
-                    optional($u->created_at)->format('Y-m-d H:i') ?? '—',
+                ['ID', 'Name', 'Email', 'Status', 'Bot score', 'Registered IP', 'Joined'],
+                array_map(fn (array $row) => [
+                    $row['id'],
+                    mb_strimwidth((string) $row['name'], 0, 30, '…'),
+                    mb_strimwidth((string) $row['email'], 0, 32, '…'),
+                    $row['status'],
+                    $row['name_score'] . ($row['looks_automated'] ? ' ⚑' : ''),
+                    $row['registration_ip_address'] ?? '—',
+                    substr((string) $row['created_at'], 0, 16),
                 ], $deletable),
             );
         }
@@ -258,19 +109,18 @@ class PurgeSpamRegistrations extends Command
             $this->table(
                 ['ID', 'Email', 'Reason'],
                 array_map(fn (array $row) => [
-                    $row[0]->id,
-                    mb_strimwidth((string) $row[0]->email, 0, 40, '…'),
-                    $row[1],
+                    $row['id'],
+                    mb_strimwidth((string) $row['email'], 0, 40, '…'),
+                    implode(', ', $row['blockers']),
                 ], $skipped),
             );
         }
     }
 
     /**
-     * @param list<User>                   $deletable
-     * @param list<array{0:User,1:string}> $skipped
+     * @param list<array<string, mixed>> $candidates
      */
-    private function export(string $path, array $deletable, array $skipped): void
+    private function export(string $path, array $candidates): void
     {
         $handle = fopen($path, 'w');
 
@@ -279,60 +129,26 @@ class PurgeSpamRegistrations extends Command
             return;
         }
 
-        fputcsv($handle, ['action', 'id', 'name', 'email', 'status', 'registration_ip', 'created_at', 'reason']);
+        fputcsv($handle, [
+            'action', 'id', 'name', 'email', 'status',
+            'name_score', 'registration_ip', 'created_at', 'reason',
+        ]);
 
-        foreach ($deletable as $user) {
+        foreach ($candidates as $row) {
             fputcsv($handle, [
-                'delete', $user->id, $user->name, $user->email, $user->status,
-                $user->registration_ip_address, optional($user->created_at)->toIso8601String(), '',
-            ]);
-        }
-
-        foreach ($skipped as [$user, $reason]) {
-            fputcsv($handle, [
-                'keep', $user->id, $user->name, $user->email, $user->status,
-                $user->registration_ip_address, optional($user->created_at)->toIso8601String(), $reason,
+                $row['deletable'] ? 'delete' : 'keep',
+                $row['id'],
+                $row['name'],
+                $row['email'],
+                $row['status'],
+                $row['name_score'],
+                $row['registration_ip_address'],
+                $row['created_at'],
+                implode(', ', $row['blockers']),
             ]);
         }
 
         fclose($handle);
         $this->info("Full list written to {$path}");
-    }
-
-    /**
-     * @param list<User> $deletable
-     */
-    private function delete(array $deletable): int
-    {
-        $ids     = array_map(fn (User $u) => $u->id, $deletable);
-        $deleted = 0;
-
-        // One transaction per user rather than one for the whole batch: if a
-        // foreign key we did not anticipate rejects a delete, that single user is
-        // rolled back and reported while the rest of the purge still completes.
-        foreach ($deletable as $user) {
-            try {
-                DB::transaction(function () use ($user) {
-                    $user->tokens()->delete();
-                    $user->syncRoles([]);
-                    $user->delete();
-                });
-
-                $deleted++;
-            } catch (\Throwable $e) {
-                $this->error("  Could not delete user {$user->id} ({$user->email}): {$e->getMessage()}");
-            }
-        }
-
-        Log::warning('bot_guard: spam registrations purged', [
-            'requested' => count($ids),
-            'deleted'   => $deleted,
-            'ids'       => $ids,
-        ]);
-
-        $this->newLine();
-        $this->info("Deleted {$deleted} of " . count($ids) . ' user(s).');
-
-        return $deleted === count($ids) ? self::SUCCESS : self::FAILURE;
     }
 }

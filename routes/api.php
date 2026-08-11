@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
 use App\Http\Controllers\Api\V1\Admin\AdminGovController;
 use App\Http\Controllers\Api\V1\Admin\AdminPoaController;
+use App\Http\Controllers\Api\V1\Admin\AdminSpamRegistrationController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
@@ -347,6 +348,19 @@ Route::prefix('v1')->group(function () {
         |----------------------------------------------------------------------
         */
         Route::prefix('admin')->name('admin.')->middleware('role:admin')->group(function () {
+
+            // Spam registration cleanup — review and remove the accounts left by
+            // the list-bombing campaign. Deliberately NOT a generic command
+            // runner: the purge endpoint re-derives eligibility server-side and
+            // can do nothing except delete accounts it has itself verified as
+            // safe. Gated behind its own permission rather than users.manage,
+            // because bulk irreversible deletion warrants a narrower grant.
+            Route::prefix('spam-registrations')->name('spam-registrations.')->group(function () {
+                Route::get('/', [AdminSpamRegistrationController::class, 'index'])
+                    ->name('index')->middleware('permission:users.purge');
+                Route::post('/purge', [AdminSpamRegistrationController::class, 'purge'])
+                    ->name('purge')->middleware(['permission:users.purge', 'throttle:10,60']);
+            });
 
             // Users
             Route::prefix('users')->name('users.')->group(function () {
