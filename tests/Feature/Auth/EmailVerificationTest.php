@@ -4,6 +4,7 @@ use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 
 beforeEach(function () {
@@ -82,11 +83,19 @@ it('resends verification email by email address', function () {
         ->assertJson(['success' => true]);
 });
 
-it('returns error when resending to an already verified email', function () {
+it('does not disclose that an email is already verified', function () {
+    // This endpoint used to answer 422 already_verified here and 422 validation
+    // for an unknown address, which let anyone enumerate accounts and read off how
+    // far through signup each one was. Every outcome now returns the same 200, and
+    // no verification mail is sent for an already-verified account.
+    Notification::fake();
+
     $user = User::factory()->create(['email_verified_at' => now(), 'status' => 'active']);
     $user->assignRole('buyer');
 
     $this->postJson('/api/v1/auth/resend-verification', ['email' => $user->email])
-        ->assertStatus(422)
-        ->assertJsonPath('code', 'already_verified');
+        ->assertOk()
+        ->assertJson(['success' => true]);
+
+    Notification::assertNothingSent();
 });

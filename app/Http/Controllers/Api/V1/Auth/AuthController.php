@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -105,17 +106,25 @@ class AuthController extends Controller
      */
     public function resendVerification(Request $request): JsonResponse
     {
-        $request->validate(['email' => ['required', 'email', 'exists:users,email']]);
+        // No `exists:users,email` rule, and one single response for every outcome.
+        //
+        // The previous version answered differently for "unknown address" (422
+        // validation), "already verified" (422 already_verified) and "sent" (200),
+        // which turned this endpoint into an account-existence oracle: anyone
+        // could enumerate which of a list of emails held an account here, and how
+        // far through signup it was. It also re-sent mail on demand, without limit,
+        // to any address the caller named.
+        $request->validate(['email' => ['required', 'email']]);
 
-        $user = User::where('email', $request->email)->firstOrFail();
+        $user = User::where('email', $request->email)->first();
 
-        if ($user->hasVerifiedEmail()) {
-            return $this->error('Email is already verified.', 422, 'already_verified');
+        if ($user && ! $user->hasVerifiedEmail()) {
+            $user->sendEmailVerificationNotification();
         }
 
-        $user->sendEmailVerificationNotification();
-
-        return $this->success(message: 'Verification email resent.');
+        return $this->success(
+            message: 'If that address has an account awaiting verification, a new link is on its way.'
+        );
     }
 
     /**
@@ -251,11 +260,20 @@ class AuthController extends Controller
     {
         $status = Password::sendResetLink($request->only('email'));
 
+        // Same reasoning as resendVerification(): the failure branch used to
+        // distinguish "no such user" from "sent", which enumerates accounts. The
+        // status is logged rather than returned so genuine delivery problems stay
+        // diagnosable without exposing the distinction to the caller.
         if ($status !== Password::RESET_LINK_SENT) {
-            return $this->error(__($status), 422, 'reset_failed');
+            Log::info('Password reset link not sent', [
+                'status' => $status,
+                'ip'     => $request->ip(),
+            ]);
         }
 
-        return $this->success(message: __($status));
+        return $this->success(
+            message: 'If that address has an account, a password reset link is on its way.'
+        );
     }
 
     /**

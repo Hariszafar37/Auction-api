@@ -23,7 +23,7 @@ it('registers a new user and returns next_step=verify_email', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ]);
+    ] + botGuardFields());
 
     $response->assertStatus(201)
         ->assertJson(['success' => true])
@@ -51,7 +51,7 @@ it('user has no password after registration', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ]);
+    ] + botGuardFields());
 
     $user = User::where('email', 'nopass@example.com')->first();
     expect($user)->not->toBeNull()
@@ -68,7 +68,7 @@ it('assigns the buyer role on registration', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ]);
+    ] + botGuardFields());
 
     $user = User::where('email', 'buyer@example.com')->first();
     expect($user->hasRole('buyer'))->toBeTrue();
@@ -136,7 +136,7 @@ it('stores middle_name when provided', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ])->assertStatus(201);
+    ] + botGuardFields())->assertStatus(201);
 
     $this->assertDatabaseHas('users', [
         'email'       => 'mn@example.com',
@@ -154,7 +154,7 @@ it('rejects registration when agree_ecomm_consent is false', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => false,
         'agree_accuracy_confirmed' => true,
-    ])->assertStatus(422)
+    ] + botGuardFields())->assertStatus(422)
       ->assertJsonPath('errors.agree_ecomm_consent', fn ($v) => count($v) > 0);
 });
 
@@ -184,7 +184,7 @@ it('stores terms_version on registration', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ])->assertStatus(201);
+    ] + botGuardFields())->assertStatus(201);
 
     $user = User::where('email', 'tv@example.com')->first();
     expect($user->terms_version)->not->toBeNull()->toBeString();
@@ -202,7 +202,7 @@ it('stores registration_ip_address on registration', function () {
         'agree_terms'              => true,
         'agree_ecomm_consent'      => true,
         'agree_accuracy_confirmed' => true,
-    ])->assertStatus(201);
+    ] + botGuardFields())->assertStatus(201);
 
     $user = User::where('email', 'ip@example.com')->first();
     // IP is set from the request; in tests this is 127.0.0.1

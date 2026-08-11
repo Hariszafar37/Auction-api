@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminAuctionLotController;
 use App\Http\Controllers\Api\V1\Admin\AdminDocumentController;
 use App\Http\Controllers\Api\V1\Admin\AdminGovController;
 use App\Http\Controllers\Api\V1\Admin\AdminPoaController;
+use App\Http\Controllers\Api\V1\Admin\AdminSpamRegistrationController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleController;
 use App\Http\Controllers\Api\V1\Admin\AdminVehicleMediaController;
@@ -68,8 +69,11 @@ Route::prefix('v1')->group(function () {
     // Stripe webhook — must be outside auth:sanctum (raw body required)
     Route::post('/webhook/stripe', [WebhookController::class, 'stripe']);
 
-    // Public contact form submission
-    Route::post('/contact', [ContactController::class, 'store']);
+    // Public contact form submission. Sends mail to a fixed internal address, so
+    // it is not an open relay the way /auth/register was — but it was equally
+    // unthrottled, and a flood would still bury the inbox and consume SES quota.
+    Route::post('/contact', [ContactController::class, 'store'])
+        ->middleware('throttle:10,60');
 
     Route::get('/health', function () {
         return response()->json([
@@ -85,13 +89,24 @@ Route::prefix('v1')->group(function () {
     | Public Auth Routes
     |--------------------------------------------------------------------------
     */
+    // Every route in this group is unauthenticated and reachable by anyone on the
+    // internet. Three of them (register, resend-verification, password/forgot)
+    // send mail to a caller-supplied address, which made them an open outbound
+    // mail relay until these throttles were added — see AppServiceProvider
+    // ::configureRateLimiting() and docs/registration-spam-protection.md.
     Route::prefix('auth')->name('auth.')->group(function () {
-        Route::post('/register',            [AuthController::class, 'register'])->name('register');
-        Route::post('/login',               [AuthController::class, 'login'])->name('login');
-        Route::post('/resend-verification', [AuthController::class, 'resendVerification'])->name('verification.resend');
-        Route::post('/set-password',        [AuthController::class, 'setPassword'])->name('set-password');
-        Route::post('/password/forgot',     [AuthController::class, 'forgotPassword'])->name('password.forgot');
-        Route::post('/password/reset',      [AuthController::class, 'resetPassword'])->name('password.reset');
+        Route::post('/register',            [AuthController::class, 'register'])->name('register')
+            ->middleware('throttle:auth-register');
+        Route::post('/login',               [AuthController::class, 'login'])->name('login')
+            ->middleware('throttle:auth-login');
+        Route::post('/resend-verification', [AuthController::class, 'resendVerification'])->name('verification.resend')
+            ->middleware('throttle:auth-mail');
+        Route::post('/set-password',        [AuthController::class, 'setPassword'])->name('set-password')
+            ->middleware('throttle:auth-mail');
+        Route::post('/password/forgot',     [AuthController::class, 'forgotPassword'])->name('password.forgot')
+            ->middleware('throttle:auth-mail');
+        Route::post('/password/reset',      [AuthController::class, 'resetPassword'])->name('password.reset')
+            ->middleware('throttle:auth-mail');
         // Government account invite acceptance (unauthenticated — user has no credentials yet)
         Route::get('/accept-invite',        [AuthController::class, 'validateInvite'])->name('invite.validate');
         Route::post('/accept-invite',       [AuthController::class, 'acceptInvite'])->name('invite.accept');
@@ -333,6 +348,19 @@ Route::prefix('v1')->group(function () {
         |----------------------------------------------------------------------
         */
         Route::prefix('admin')->name('admin.')->middleware('role:admin')->group(function () {
+
+            // Spam registration cleanup — review and remove the accounts left by
+            // the list-bombing campaign. Deliberately NOT a generic command
+            // runner: the purge endpoint re-derives eligibility server-side and
+            // can do nothing except delete accounts it has itself verified as
+            // safe. Gated behind its own permission rather than users.manage,
+            // because bulk irreversible deletion warrants a narrower grant.
+            Route::prefix('spam-registrations')->name('spam-registrations.')->group(function () {
+                Route::get('/', [AdminSpamRegistrationController::class, 'index'])
+                    ->name('index')->middleware('permission:users.purge');
+                Route::post('/purge', [AdminSpamRegistrationController::class, 'purge'])
+                    ->name('purge')->middleware(['permission:users.purge', 'throttle:10,60']);
+            });
 
             // Users
             Route::prefix('users')->name('users.')->group(function () {
