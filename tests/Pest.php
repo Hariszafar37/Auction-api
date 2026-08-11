@@ -38,6 +38,24 @@ pest()->use(Tests\Helpers\CreatesPurchaseData::class)
 */
 
 /**
+ * The bot-guard fields that our registration form sends on every submission:
+ * an empty honeypot and a plausible fill duration.
+ *
+ * POST /auth/register requires these to be PRESENT — that is the check which
+ * distinguishes our rendered form from a script hitting the API directly — so
+ * any test exercising a successful registration has to include them.
+ *
+ * @return array<string, mixed>
+ */
+function botGuardFields(array $overrides = []): array
+{
+    return array_merge([
+        (string) config('bot_guard.form_signal.honeypot_field', 'website') => '',
+        'form_elapsed_ms' => 9_000,
+    ], $overrides);
+}
+
+/**
  * Record acceptance of the current auction Terms for a user so they satisfy
  * the entry gate enforced at bid time (BiddingService::requireTermsAccepted /
  * BidController::increaseIfSaleBid). Any test placing a bid for a user expected
