@@ -11,9 +11,7 @@ use App\Policies\UserDocumentPolicy;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -92,14 +90,12 @@ class AppServiceProvider extends ServiceProvider
      *
      * IMPORTANT — the IP keys are only meaningful if TRUSTED_PROXIES is set on the
      * environment. Behind the ALB with it unset, Request::ip() returns the load
-     * balancer's address and every client collapses into one shared bucket —
-     * which would throttle the whole site rather than one abuser.
-     *
-     * byIp() detects exactly that and drops the IP key rather than applying a
-     * dangerous one, so a missing TRUSTED_PROXIES degrades to "email limits only"
-     * instead of "the 31st login this minute gets a 429". That is a safety net,
-     * not a substitute: set TRUSTED_PROXIES so the IP limits actually work.
-     * See docs/registration-spam-protection.md.
+     * balancer's address and every client collapses into one shared bucket.
+     * The symptom would be over-throttling, which is loud and gets fixed. Do NOT
+     * try to detect that from request headers and relax the limit — the headers
+     * involved are set by the caller, so that turns the control off on demand.
+     * See byIp(). Verified on production: nginx already presents the real client
+     * address as REMOTE_ADDR, so the IP keys resolve per visitor as intended.
      */
     private function configureRateLimiting(): void
     {
@@ -129,80 +125,27 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Build an IP-keyed limit, or nothing when the client IP cannot be trusted.
+     * Build an IP-keyed limit. Always applied — never conditionally skipped.
      *
-     * Behind a proxy that TRUSTED_PROXIES does not cover, Request::ip() returns
-     * the PROXY's address rather than the caller's. Every client on the internet
-     * then shares one bucket, and a limit meant to stop a single abuser instead
-     * throttles the entire site — the login limiter would cut off the 31st person
-     * to sign in within a minute, which on a live auction day is a real outage.
+     * An earlier version of this method dropped the IP limit whenever an
+     * X-Forwarded-For header arrived from a peer TRUSTED_PROXIES did not cover.
+     * The intent was to avoid collapsing every client into one bucket behind a
+     * misconfigured proxy. The effect was a rate-limit bypass: that header is
+     * set by the caller, so anyone could send `X-Forwarded-For: anything` and
+     * turn per-IP throttling off for their own requests. Verified against
+     * production — with the header, an exhausted bucket answered 200 again.
      *
-     * Detecting that and dropping the IP key is strictly better than applying it:
-     * a key that identifies everyone identifies no one, so it buys no security
-     * while carrying all of that risk. The per-email limits still apply, and they
-     * are the load-bearing ones anyway — they are keyed on caller-supplied data,
-     * are immune to proxying, and are what bound how hard any single account or
-     * victim can be hit.
+     * A rate limiter is a security control and must fail CLOSED. If a proxy
+     * misconfiguration ever does collapse callers into one bucket, the symptom
+     * is over-throttling, which is visible, alarming and fixed by setting
+     * TRUSTED_PROXIES. Silently disabling the control is neither visible nor
+     * fixable, and it is exactly what an attacker would choose.
      *
-     * This is a safety net, not the fix. Set TRUSTED_PROXIES so the IP limits do
-     * their job; see docs/registration-spam-protection.md.
-     *
-     * @return list<Limit> exactly one limit, or none
+     * @return list<Limit>
      */
     private static function byIp(Request $request, string $prefix, Limit $limit): array
     {
-        if (! self::clientIpIsTrustworthy($request)) {
-            self::warnAboutUntrustedProxy($request);
-
-            return [];
-        }
-
         return [$limit->by($prefix . $request->ip())];
-    }
-
-    /**
-     * Whether Request::ip() actually identifies the caller.
-     *
-     * A forwarding header we are not configured to trust means the address we
-     * can see belongs to the proxy. With no forwarding header at all, we are
-     * talking to the client directly and the address is genuine.
-     */
-    private static function clientIpIsTrustworthy(Request $request): bool
-    {
-        $forwardingHeaders = ['X-Forwarded-For', 'Forwarded', 'X-Real-IP'];
-
-        foreach ($forwardingHeaders as $header) {
-            if ($request->headers->has($header) && ! $request->isFromTrustedProxy()) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Surface the misconfiguration without flooding the log.
-     *
-     * Cache::add is atomic and only succeeds when the key is absent, so exactly
-     * one warning is written per hour however many requests arrive. Silent
-     * degradation would be worse than the bug: rate limiting would look healthy
-     * while doing nothing.
-     */
-    private static function warnAboutUntrustedProxy(Request $request): void
-    {
-        if (! Cache::add('ratelimit:untrusted-proxy-warned', true, now()->addHour())) {
-            return;
-        }
-
-        Log::warning(
-            'Rate limiting: per-IP limits disabled — requests arrive via a proxy that TRUSTED_PROXIES does not cover, '
-            . 'so Request::ip() reports the proxy rather than the client. Per-email limits remain active. '
-            . 'Set TRUSTED_PROXIES to restore per-IP limiting.',
-            [
-                'reported_ip' => $request->ip(),
-                'forwarded_for' => $request->headers->get('X-Forwarded-For'),
-            ],
-        );
     }
 
     /**

@@ -176,23 +176,31 @@ collapse into one shared rate-limit bucket.
 TRUSTED_PROXIES=*
 ```
 
-Left unset, a per-IP limit meant to stop one abuser would throttle the entire
-site — the login limiter is 30/minute, so the 31st person to sign in within a
-minute would get a 429. On a live auction day that is an outage.
+**In practice production does not need it.** Verified by probing the live API:
+per-IP limiting already keys on the real visitor, because nginx presents the
+client address as `REMOTE_ADDR` before PHP sees the request. Exhausting the
+limit from one machine returns 429 as intended.
 
-`AppServiceProvider::byIp()` therefore refuses to apply an IP key it cannot
-trust: when a forwarding header arrives from a peer `TRUSTED_PROXIES` does not
-cover, the IP limits are dropped and a warning is logged once an hour. A key
-that identifies everyone identifies no one, so applying it would buy no security
-while carrying all of that risk. The per-email limits stay active throughout, and
-they are the load-bearing ones — immune to proxying, and what actually bound how
-hard any one account or victim can be hit.
+Setting it would additionally make `X-Forwarded-For` authoritative. Only do that
+with the trusted range scoped to the ALB/VPC CIDR — **never `*` on a host that is
+reachable directly**, or callers can forge `X-Forwarded-For`, mint a fresh
+rate-limit bucket per request and poison `registration_ip_address`.
 
-**That is a safety net, not a substitute.** Until `TRUSTED_PROXIES` is set there
-is no per-IP limiting at all, so distributed abuse across many accounts is
-uncapped. Setting it also makes `registration_ip_address` correct, which is what
-makes spam attributable in the first place. Grep the logs for
-`per-IP limits disabled` to confirm whether the safety net is currently engaged.
+### Do not "detect" a bad proxy and relax the limit
+
+An earlier revision dropped the per-IP limits whenever an `X-Forwarded-For`
+header arrived from an untrusted peer, meaning to avoid collapsing every caller
+into one bucket behind a misconfigured proxy. **That shipped a bypass.** The
+header is supplied by the caller, so anyone could send `X-Forwarded-For:
+anything` and switch per-IP throttling off for themselves — confirmed against
+production, where an exhausted bucket answered 200 again once the header was
+added.
+
+A rate limiter is a security control and must **fail closed**. If a proxy
+misconfiguration ever does collapse callers into one bucket, the symptom is
+over-throttling: loud, obvious, and fixed by setting `TRUSTED_PROXIES`. Silently
+disabling the control is neither loud nor obvious, and it is precisely what an
+attacker would choose. `RateLimitProxySafetyTest` pins this shut.
 
 ### Environment variables
 
