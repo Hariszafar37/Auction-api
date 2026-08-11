@@ -4,8 +4,10 @@ use App\Console\Commands\AccrueStorageFees;
 use App\Console\Commands\CheckDepositExpiry;
 use App\Console\Commands\MarkOverdueInvoices;
 use App\Console\Commands\ReleaseSellerSettlements;
+use App\Jobs\Auction\EndCompletedAuctions;
 use App\Jobs\Auction\ProcessIfSaleExpiry;
 use App\Jobs\Auction\ProcessLotClose;
+use App\Jobs\Auction\ProcessScheduledLotCountdowns;
 use App\Jobs\Auction\StartScheduledAuctions;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -21,11 +23,17 @@ Artisan::command('inspire', function () {
 |--------------------------------------------------------------------------
 */
 
-// Auto-start auctions whose starts_at has passed
+// Auto-start auctions whose starts_at has passed (and open their lots)
 Schedule::job(new StartScheduledAuctions)->everyMinute();
+
+// Start the final countdown on lots whose scheduled closing time has arrived
+Schedule::job(new ProcessScheduledLotCountdowns)->everyMinute();
 
 // Close lots whose countdown has expired
 Schedule::job(new ProcessLotClose)->everyMinute();
+
+// End live auctions once every lot has finished
+Schedule::job(new EndCompletedAuctions)->everyMinute();
 
 // Auto-reject if_sale lots past their seller decision deadline
 Schedule::job(new ProcessIfSaleExpiry)->everyMinute();

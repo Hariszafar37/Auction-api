@@ -157,7 +157,9 @@ class AuctionController extends Controller
         $lots = QueryBuilder::for($auction->lots()->getQuery())
             ->allowedFilters([AllowedFilter::exact('status')])
             ->allowedSorts(['lot_number', 'current_bid', 'status'])
-            ->with('vehicle.media')
+            // 'auction' lets AuctionLotResource resolve effective_close_at for
+            // lots that inherit the auction-wide closing time.
+            ->with(['vehicle.media', 'auction'])
             ->when(
                 ! $request->user()?->hasRole('dealer') && ! $request->user()?->hasRole('admin'),
                 fn ($q) => $q->where('dealer_only', false)
@@ -192,7 +194,7 @@ class AuctionController extends Controller
         }
 
         return $this->success(
-            new \App\Http\Resources\Auction\AuctionLotResource($lot->load('vehicle.media'))
+            new \App\Http\Resources\Auction\AuctionLotResource($lot->load(['vehicle.media', 'auction']))
         );
     }
 }

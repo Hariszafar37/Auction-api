@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\LotStatus;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -26,6 +27,7 @@ class AuctionLot extends Model
         'seller_decision_deadline',
         'seller_approved_at',
         'countdown_ends_at',
+        'scheduled_close_at',
         'countdown_seconds',
         'countdown_extensions',
         'opened_at',
@@ -46,6 +48,7 @@ class AuctionLot extends Model
         'countdown_seconds'        => 'integer',
         'countdown_extensions'     => 'integer',
         'countdown_ends_at'        => 'datetime',
+        'scheduled_close_at'       => 'datetime',
         'opened_at'                => 'datetime',
         'closed_at'                => 'datetime',
         'seller_notified_at'       => 'datetime',
@@ -146,5 +149,17 @@ class AuctionLot extends Model
         return $this->status === LotStatus::Countdown
             && $this->countdown_ends_at
             && $this->countdown_ends_at->isFuture();
+    }
+
+    /**
+     * When this lot is scheduled to enter its final countdown.
+     *
+     * A per-lot time always wins; otherwise the lot inherits the auction-wide
+     * closing time. Null means "no schedule" — the lot only closes when an
+     * admin acts on it manually.
+     */
+    public function effectiveCloseAt(): ?Carbon
+    {
+        return $this->scheduled_close_at ?? $this->auction?->scheduled_end_at;
     }
 }

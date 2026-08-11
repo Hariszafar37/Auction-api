@@ -88,7 +88,7 @@ class AdminAuctionLotController extends Controller
             return $this->error($e->getMessage(), 422, 'lot_open_failed', $e->errors());
         }
 
-        return $this->success(new AuctionLotResource($lot->load('vehicle')), 'Lot is now open for bidding.');
+        return $this->success(new AuctionLotResource($lot->load(['vehicle', 'auction'])), 'Lot is now open for bidding.');
     }
 
     /**
@@ -104,7 +104,7 @@ class AdminAuctionLotController extends Controller
         }
 
         return $this->success(
-            new AuctionLotResource($lot->fresh('vehicle')),
+            new AuctionLotResource($lot->fresh(['vehicle', 'auction'])),
             'Countdown started.'
         );
     }
@@ -121,7 +121,7 @@ class AdminAuctionLotController extends Controller
             return $this->error('Failed to close lot.', 500, 'lot_close_failed');
         }
 
-        return $this->success(new AuctionLotResource($lot->load('vehicle')), 'Lot closed.');
+        return $this->success(new AuctionLotResource($lot->load(['vehicle', 'auction'])), 'Lot closed.');
     }
 
     /**
@@ -136,7 +136,7 @@ class AdminAuctionLotController extends Controller
             return $this->error($e->getMessage(), 422, 'if_sale_failed', $e->errors());
         }
 
-        return $this->success(new AuctionLotResource($lot->load('vehicle')), 'Sale confirmed.');
+        return $this->success(new AuctionLotResource($lot->load(['vehicle', 'auction'])), 'Sale confirmed.');
     }
 
     /**
@@ -151,6 +151,6 @@ class AdminAuctionLotController extends Controller
             return $this->error($e->getMessage(), 422, 'if_sale_failed', $e->errors());
         }
 
-        return $this->success(new AuctionLotResource($lot->load('vehicle')), 'Sale rejected.');
+        return $this->success(new AuctionLotResource($lot->load(['vehicle', 'auction'])), 'Sale rejected.');
     }
 }

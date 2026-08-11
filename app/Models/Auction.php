@@ -19,6 +19,7 @@ class Auction extends Model
         'location_id',
         'timezone',
         'starts_at',
+        'scheduled_end_at',
         'ends_at',
         'status',
         'created_by',
@@ -26,9 +27,10 @@ class Auction extends Model
     ];
 
     protected $casts = [
-        'starts_at' => 'datetime',
-        'ends_at'   => 'datetime',
-        'status'    => AuctionStatus::class,
+        'starts_at'        => 'datetime',
+        'scheduled_end_at' => 'datetime',
+        'ends_at'          => 'datetime',
+        'status'           => AuctionStatus::class,
     ];
 
     // ─── Relationships ──────────────────────────────────────────────────────────
