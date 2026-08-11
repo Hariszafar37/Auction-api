@@ -25,6 +25,9 @@ class UpdateAuctionLotRequest extends FormRequest
             'starting_bid'             => ['sometimes', 'integer', 'min:100'],
             'reserve_price'            => ['nullable', 'integer', 'min:0'],
             'countdown_seconds'        => ['nullable', 'integer', 'min:10', 'max:300'],
+            // Stays editable while the lot is open so the ring order can be
+            // adjusted mid-sale. Send null to fall back to the auction-wide time.
+            'scheduled_close_at'       => ['sometimes', 'nullable', 'date'],
             'requires_seller_approval' => ['nullable', 'boolean'],
         ];
     }

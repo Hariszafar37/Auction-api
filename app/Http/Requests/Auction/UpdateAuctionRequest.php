@@ -20,6 +20,9 @@ class UpdateAuctionRequest extends FormRequest
             'location_id' => ['sometimes', 'nullable', 'integer', 'exists:locations,id'],
             'timezone'    => ['nullable', 'timezone'],
             'starts_at'   => ['sometimes', 'date', 'after:now'],
+            // Editable while the auction is live too, so the closing time can be
+            // pushed back mid-sale. AuctionService enforces "after the start".
+            'scheduled_end_at' => ['sometimes', 'nullable', 'date'],
             'notes'       => ['nullable', 'string'],
         ];
     }
