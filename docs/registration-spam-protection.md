@@ -176,10 +176,23 @@ collapse into one shared rate-limit bucket.
 TRUSTED_PROXIES=*
 ```
 
-The per-IP ceilings are generous enough that a misconfiguration degrades into
-"no useful IP limiting" rather than "nobody can register" — but the limits are
-only meaningful once this is set. It also makes `registration_ip_address`
-correct, which is what makes the spam attributable at all.
+Left unset, a per-IP limit meant to stop one abuser would throttle the entire
+site — the login limiter is 30/minute, so the 31st person to sign in within a
+minute would get a 429. On a live auction day that is an outage.
+
+`AppServiceProvider::byIp()` therefore refuses to apply an IP key it cannot
+trust: when a forwarding header arrives from a peer `TRUSTED_PROXIES` does not
+cover, the IP limits are dropped and a warning is logged once an hour. A key
+that identifies everyone identifies no one, so applying it would buy no security
+while carrying all of that risk. The per-email limits stay active throughout, and
+they are the load-bearing ones — immune to proxying, and what actually bound how
+hard any one account or victim can be hit.
+
+**That is a safety net, not a substitute.** Until `TRUSTED_PROXIES` is set there
+is no per-IP limiting at all, so distributed abuse across many accounts is
+uncapped. Setting it also makes `registration_ip_address` correct, which is what
+makes spam attributable in the first place. Grep the logs for
+`per-IP limits disabled` to confirm whether the safety net is currently engaged.
 
 ### Environment variables
 
