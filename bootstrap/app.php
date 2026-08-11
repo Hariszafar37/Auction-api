@@ -52,6 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => RoleOrPermissionMiddleware::class,
             'optional.auth'      => \App\Http\Middleware\OptionalSanctumAuth::class,
             'account.usable'     => \App\Http\Middleware\EnsureAccountUsable::class,
+            'can.purge.spam'     => \App\Http\Middleware\EnsureCanPurgeSpam::class,
         ]);
 
         // Turns the per-role token expires_at into an IDLE timeout by pushing it

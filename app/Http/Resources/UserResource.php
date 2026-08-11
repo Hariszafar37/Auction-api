@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Support\FormatsDates;
 use App\Support\SignedFileUrl;
+use App\Support\SpamPurgeAccess;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -27,6 +28,11 @@ class UserResource extends JsonResource
             'status'                  => $this->status,
             'email_verified_at'       => $this->safeIso($this->email_verified_at),
             'roles'                   => $this->getRoleNames(),
+
+            // Whether this user may reach the spam purge console. Derived from
+            // the same helper the guarding middleware uses, so the navigation
+            // the browser draws can never offer a link the API would refuse.
+            'can_purge_spam'          => SpamPurgeAccess::allows($this->resource),
 
             // Activation
             'account_type'            => $this->account_type,
