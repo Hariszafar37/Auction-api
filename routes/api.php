@@ -353,14 +353,23 @@ Route::prefix('v1')->group(function () {
             // the list-bombing campaign. Deliberately NOT a generic command
             // runner: the purge endpoint re-derives eligibility server-side and
             // can do nothing except delete accounts it has itself verified as
-            // safe. Gated behind its own permission rather than users.manage,
-            // because bulk irreversible deletion warrants a narrower grant.
-            Route::prefix('spam-registrations')->name('spam-registrations.')->group(function () {
-                Route::get('/', [AdminSpamRegistrationController::class, 'index'])
-                    ->name('index')->middleware('permission:users.purge');
-                Route::post('/purge', [AdminSpamRegistrationController::class, 'purge'])
-                    ->name('purge')->middleware(['permission:users.purge', 'throttle:10,60']);
-            });
+            // safe.
+            //
+            // Three gates, all required. `role:admin` from the parent group,
+            // `permission:users.purge` because bulk irreversible deletion
+            // warrants a narrower grant than users.manage, and `can.purge.spam`
+            // which narrows it further to the specific operators named in
+            // config('bot_guard.purge_allowlist'). The one-off cleanup this was
+            // built for is finished, so it should no longer be reachable by
+            // every administrator.
+            Route::prefix('spam-registrations')->name('spam-registrations.')
+                ->middleware(['permission:users.purge', 'can.purge.spam'])
+                ->group(function () {
+                    Route::get('/', [AdminSpamRegistrationController::class, 'index'])
+                        ->name('index');
+                    Route::post('/purge', [AdminSpamRegistrationController::class, 'purge'])
+                        ->name('purge')->middleware('throttle:10,60');
+                });
 
             // Users
             Route::prefix('users')->name('users.')->group(function () {

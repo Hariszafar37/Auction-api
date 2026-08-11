@@ -11,6 +11,11 @@ beforeEach(function () {
 
     $this->admin = User::factory()->create(['status' => 'active']);
     $this->admin->assignRole('admin');
+
+    // The console is restricted to specific operators on top of role:admin — see
+    // SpamPurgeAccessTest for that gate. These tests exercise the console's own
+    // behaviour, so the acting admin is placed on the allowlist.
+    config()->set('bot_guard.purge_allowlist', $this->admin->email);
 });
 
 function spamUser(int $id, array $attributes = []): User
