@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\User;
 
+use App\Support\FormatsDates;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -11,6 +12,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class WonLotResource extends JsonResource
 {
+    use FormatsDates;
+
     public function toArray(Request $request): array
     {
         $vehicle = $this->vehicle;
@@ -21,12 +24,15 @@ class WonLotResource extends JsonResource
             'lot_number'  => $this->lot_number,
             'sold_price'  => $this->sold_price,
             'bid_count'   => $this->bid_count,
-            'closed_at'   => $this->closed_at,
+            'closed_at'   => $this->safeIso($this->closed_at),
             'auction'     => $auction ? [
                 'id'        => $auction->id,
                 'title'     => $auction->title,
                 'location'  => $auction->location,
-                'starts_at' => $auction->starts_at,
+                'starts_at' => $this->safeIso($auction->starts_at),
+                // Ships alongside every auction time so the client can render it
+                // on the auction's clock rather than the reader's.
+                'timezone'  => $auction->timezone,
             ] : null,
             'vehicle'     => $vehicle ? [
                 'id'           => $vehicle->id,
