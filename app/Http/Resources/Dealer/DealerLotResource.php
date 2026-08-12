@@ -49,6 +49,9 @@ class DealerLotResource extends JsonResource
                 'status'    => $this->auction->status->value,
                 'location'  => $this->auction->location,
                 'starts_at' => $this->auction->starts_at->toIso8601String(),
+                // Ships alongside every auction time so the client can render it
+                // on the auction's clock rather than the reader's.
+                'timezone'  => $this->auction->timezone,
             ] : null,
 
             'opened_at'  => $this->safeIso($this->opened_at),

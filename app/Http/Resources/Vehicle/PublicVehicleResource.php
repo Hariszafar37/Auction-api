@@ -69,6 +69,9 @@ class PublicVehicleResource extends JsonResource
                     'auction_id'        => $lot->auction_id,
                     'auction_title'     => optional($lot->auction)->title,
                     'auction_starts_at' => $this->safeIso(optional($lot->auction)?->starts_at),
+                    // Ships alongside the time so the client can render it on the
+                    // auction's clock rather than the reader's.
+                    'auction_timezone'  => optional($lot->auction)->timezone,
                     'current_bid'       => $lot->current_bid,
                     'next_minimum_bid'  => $lot->nextMinimumBid(),
                     'status'            => $lot->status->value,
