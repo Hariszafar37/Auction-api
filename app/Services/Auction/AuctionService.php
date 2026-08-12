@@ -14,6 +14,7 @@ use App\Models\Location;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\Payment\SellerSettlementService;
+use App\Support\AuctionTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -83,10 +84,49 @@ class AuctionService
         }
 
         $updates += $this->resolveScheduledEnd($auction, $data);
+        $updates += $this->reinterpretOnTimezoneChange($auction, $data, $updates);
 
         $auction->update($updates);
 
         return $auction->fresh();
+    }
+
+    /**
+     * Keep the wall clock when only the timezone changes.
+     *
+     * An admin who switches the dropdown from Eastern to Pacific without
+     * retyping the times means "10:00 PM Pacific" — the form still shows 10:00
+     * PM, so that had better be what it means. Holding the instant instead
+     * would silently redisplay the auction as 7:00 PM.
+     *
+     * Only fills fields the client did not send: anything submitted alongside
+     * the new zone was already converted with it in the FormRequest.
+     *
+     * @return array<string, string|null>
+     */
+    private function reinterpretOnTimezoneChange(Auction $auction, array $data, array $updates): array
+    {
+        $newTz = $updates['timezone'] ?? null;
+
+        if (! $newTz || $newTz === $auction->timezone) {
+            return [];
+        }
+
+        $carried = [];
+
+        if (! array_key_exists('starts_at', $updates) && $auction->starts_at) {
+            $carried['starts_at'] = AuctionTime::reinterpret(
+                $auction->starts_at, $auction->timezone, $newTz,
+            );
+        }
+
+        if (! array_key_exists('scheduled_end_at', $data) && $auction->scheduled_end_at) {
+            $carried['scheduled_end_at'] = AuctionTime::reinterpret(
+                $auction->scheduled_end_at, $auction->timezone, $newTz,
+            );
+        }
+
+        return $carried;
     }
 
     /**

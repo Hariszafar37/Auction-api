@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Auction;
 use App\Models\Vehicle;
+use App\Support\AuctionTime;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -29,7 +30,13 @@ class VehicleGoingToAuction extends Notification
     public function toMail(mixed $notifiable): MailMessage
     {
         $vehicleTitle   = "{$this->vehicle->year} {$this->vehicle->make} {$this->vehicle->model}";
-        $auctionDate    = $this->auction->starts_at?->format('F j, Y \a\t g:i A T') ?? 'TBD';
+        // Render in the auction's own zone, not the storage zone. Formatting the
+        // raw UTC instant here used to stamp a literal "UTC" on a time nobody
+        // outside the server thinks in.
+        $auctionDate    = $this->auction->starts_at
+            ?->copy()
+            ->setTimezone(AuctionTime::zone($this->auction->timezone))
+            ->format('F j, Y \a\t g:i A T') ?? 'TBD';
         $frontendUrl    = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
         $inventoryUrl   = "{$frontendUrl}/inventory/{$this->vehicle->id}";
 

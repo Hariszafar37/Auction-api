@@ -357,22 +357,26 @@ it('accepts a per-lot closing time after the auction starts', function () {
 
     $auction = $this->createAuction([
         'status'    => AuctionStatus::Scheduled,
+        'timezone'  => 'America/New_York',
         'starts_at' => now()->addDays(2),
     ]);
 
     [$vehicle] = $this->createVehicleWithSeller(['status' => 'available']);
 
-    $closeAt = now()->addDays(2)->addHours(3);
+    // The admin form posts a naive wall clock. It means that time *in the
+    // auction's zone* — a lot has no zone of its own, it runs inside its
+    // auction. See Feature/Auction/AuctionTimezoneTest.php.
+    $wallClock = now()->addDays(2)->addHours(3)->format('Y-m-d\TH:i');
 
     $response = $this->actingAsAdmin()
         ->postJson("/api/v1/admin/auctions/{$auction->id}/lots", [
             'vehicle_id'         => $vehicle->id,
             'starting_bid'       => 500,
-            'scheduled_close_at' => $closeAt->toDateTimeString(),
+            'scheduled_close_at' => $wallClock,
         ]);
 
     $response->assertStatus(201);
 
     expect(AuctionLot::latest('id')->first()->scheduled_close_at->timestamp)
-        ->toBe($closeAt->timestamp);
+        ->toBe(Carbon\CarbonImmutable::parse($wallClock, 'America/New_York')->timestamp);
 });
