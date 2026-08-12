@@ -29,6 +29,7 @@ class AuctionResource extends JsonResource
             'notes'       => $this->when($request->user()?->hasRole('admin'), $this->notes),
             'lot_count'   => $this->lots_count ?? $this->whenLoaded('lots', fn () => $this->lots->count()),
             'created_at'  => $this->safeIso($this->created_at),
+            'updated_at'  => $this->safeIso($this->updated_at),
 
             'lots' => AuctionLotResource::collection($this->whenLoaded('lots')),
         ];

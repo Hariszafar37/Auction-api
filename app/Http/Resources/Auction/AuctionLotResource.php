@@ -55,6 +55,13 @@ class AuctionLotResource extends JsonResource
             'countdown_seconds'    => $this->countdown_seconds,
             'countdown_extensions' => $this->countdown_extensions,
 
+            // The zone every time on this lot should be read in. A lot has none
+            // of its own — it runs inside its auction. Null when the relation is
+            // not loaded (some endpoints load only `vehicle`); the client then
+            // falls back to the platform zone, which is a safe degradation
+            // because it is never the *browser's* zone either way.
+            'auction_timezone' => $this->relationLoaded('auction') ? $this->auction?->timezone : null,
+
             // Scheduled close — this lot's own time (null = inherits the auction's).
             'scheduled_close_at' => $this->safeIso($this->scheduled_close_at),
             // The time the countdown will actually start: the lot's own value, or

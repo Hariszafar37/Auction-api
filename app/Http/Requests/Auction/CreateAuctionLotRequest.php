@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auction;
 
+use App\Support\AuctionTime;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -10,6 +11,25 @@ class CreateAuctionLotRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Convert the lot's wall-clock closing time into a UTC instant.
+     *
+     * A lot has no zone of its own — it runs inside its auction, so it inherits
+     * the auction's. Converting here is what makes the `after:` rule below a
+     * like-for-like comparison of two UTC instants.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('scheduled_close_at')) {
+            $this->merge([
+                'scheduled_close_at' => AuctionTime::toUtc(
+                    $this->input('scheduled_close_at'),
+                    $this->route('auction')?->timezone,
+                ),
+            ]);
+        }
     }
 
     public function rules(): array
@@ -35,12 +55,17 @@ class CreateAuctionLotRequest extends FormRequest
         ];
     }
 
-    /** Start time of the auction this lot is being added to, for the after: rule. */
+    /**
+     * Start time of the auction this lot is being added to, for the after: rule.
+     *
+     * ISO-8601 with an explicit offset rather than a naive datetime string, so
+     * the comparison cannot silently depend on PHP's default timezone.
+     */
     private function auctionStartsAt(): string
     {
         $startsAt = $this->route('auction')?->starts_at;
 
-        return $startsAt ? $startsAt->toDateTimeString() : 'now';
+        return $startsAt ? $startsAt->toIso8601String() : 'now';
     }
 
     public function messages(): array
