@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auction;
 
+use App\Support\AuctionTime;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -10,6 +11,23 @@ class UpdateAuctionLotRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Convert the lot's wall-clock closing time into a UTC instant, in the
+     * parent auction's zone. Sending null clears the override and falls the lot
+     * back to the auction-wide time, so a present-but-null key must survive.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('scheduled_close_at')) {
+            $this->merge([
+                'scheduled_close_at' => AuctionTime::toUtc(
+                    $this->input('scheduled_close_at'),
+                    $this->route('auction')?->timezone,
+                ),
+            ]);
+        }
     }
 
     public function rules(): array
