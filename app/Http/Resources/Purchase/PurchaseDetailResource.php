@@ -33,6 +33,9 @@ class PurchaseDetailResource extends JsonResource
                 'title'     => $auction->title,
                 'location'  => $auction->location,
                 'starts_at' => $auction->starts_at?->toIso8601String(),
+                // Ships alongside every auction time so the client can render it
+                // on the auction's clock rather than the reader's.
+                'timezone'  => $auction->timezone,
             ] : null,
 
             'vehicle' => $vehicle ? [

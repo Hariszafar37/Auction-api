@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auction;
 
+use App\Support\AuctionTime;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CreateAuctionRequest extends FormRequest
@@ -9,6 +10,26 @@ class CreateAuctionRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * Convert the admin's wall-clock input into UTC instants before validation.
+     *
+     * Doing it here rather than in the service means the `after:now` and
+     * `after:starts_at` rules below compare UTC against UTC and are correct for
+     * free — and AuctionService needs no knowledge of timezones at all.
+     */
+    protected function prepareForValidation(): void
+    {
+        $tz = $this->input('timezone');
+
+        foreach (['starts_at', 'scheduled_end_at'] as $field) {
+            // Only touch keys the client actually sent: merging an absent key
+            // as null would fabricate a "clear this value" instruction.
+            if ($this->has($field)) {
+                $this->merge([$field => AuctionTime::toUtc($this->input($field), $tz)]);
+            }
+        }
     }
 
     public function rules(): array
