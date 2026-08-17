@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Http\Controllers\Concerns\UploadsVehicleMedia;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Vehicle\ReorderVehicleMediaRequest;
 use App\Http\Requests\Vehicle\UploadVehicleMediaRequest;
@@ -12,6 +13,8 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class AdminVehicleMediaController extends Controller
 {
+    use UploadsVehicleMedia;
+
     /**
      * POST /api/v1/admin/vehicles/{vehicle}/media
      *
@@ -21,37 +24,26 @@ class AdminVehicleMediaController extends Controller
      */
     public function store(UploadVehicleMediaRequest $request, Vehicle $vehicle): JsonResponse
     {
-        $uploaded = [];
-        $errors   = [];
+        $files  = $request->file('files', []);
+        $result = $this->storeUploadedMedia($vehicle, $files);
 
-        foreach ($request->file('files', []) as $file) {
-            try {
-                $mime       = $file->getMimeType() ?? '';
-                $collection = str_starts_with($mime, 'video/') ? 'videos' : 'images';
-
-                $media = $vehicle
-                    ->addMedia($file)
-                    ->usingFileName($this->sanitizeFilename($file->getClientOriginalName()))
-                    ->toMediaCollection($collection);
-
-                $uploaded[] = $this->formatMedia($media);
-            } catch (\Throwable $e) {
-                $errors[] = $file->getClientOriginalName() . ': ' . $e->getMessage();
-            }
-        }
-
-        if (empty($uploaded) && ! empty($errors)) {
-            return $this->error('All uploads failed.', 422, 'upload_failed', ['files' => $errors]);
+        if (empty($result['uploaded'])) {
+            return $this->error(
+                $result['errors'][0] ?? 'The upload could not be completed. Please try again.',
+                422,
+                'upload_failed',
+                ['files' => $result['errors']],
+            );
         }
 
         return response()->json([
             'success'  => true,
-            'message'  => count($uploaded) . ' file(s) uploaded successfully.',
+            'message'  => $this->uploadResultMessage($result, count($files)),
             'data'     => [
-                'uploaded' => $uploaded,
+                'uploaded' => $result['uploaded'],
                 'media'    => $this->allMedia($vehicle),
             ],
-            'errors'   => $errors ?: null,
+            'errors'   => $result['errors'] ?: null,
         ], 201);
     }
 
