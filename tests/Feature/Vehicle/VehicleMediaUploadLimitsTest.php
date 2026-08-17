@@ -177,6 +177,32 @@ it('still accepts every format the yard actually uses', function () {
     }
 });
 
+it('rejects a non-file value without a server error', function () {
+    // 'required' was removed from files.* so the custom rule can report why an
+    // upload failed. These cover the hole that removal could have opened.
+    $admin   = makeMediaAdmin();
+    $vehicle = Vehicle::factory()->create();
+
+    foreach ([['not-a-file'], [null], [123]] as $payload) {
+        $response = test()->actingAs($admin)
+            ->postJson("/api/v1/admin/vehicles/{$vehicle->id}/media", ['files' => $payload]);
+
+        $response->assertStatus(422);
+        expect(firstUploadError($response))->not->toBe('');
+    }
+});
+
+it('still rejects a request with no files at all', function () {
+    $admin   = makeMediaAdmin();
+    $vehicle = Vehicle::factory()->create();
+
+    $response = test()->actingAs($admin)
+        ->postJson("/api/v1/admin/vehicles/{$vehicle->id}/media", ['files' => []]);
+
+    $response->assertStatus(422);
+    expect(firstUploadError($response))->toContain('at least one');
+});
+
 // ── Guards against the limits silently drifting apart again ───────────────
 
 it('keeps media-library max_file_size at or above the largest enforced ceiling', function () {
