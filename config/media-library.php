@@ -11,8 +11,13 @@ return [
     /*
      * The maximum file size of an item in bytes.
      * Adding a larger file will result in an exception.
+     *
+     * This is a backstop, not the user-facing limit. Per-type ceilings are
+     * enforced earlier and with a readable message by App\Rules\VehicleMediaFile;
+     * left at 10 MB this silently overrode them and surfaced as the opaque
+     * "All uploads failed." Keep it at or above MediaUploadLimits::VIDEO_MAX_KB.
      */
-    'max_file_size' => 1024 * 1024 * 10, // 10MB
+    'max_file_size' => \App\Support\MediaUploadLimits::VIDEO_MAX_KB * 1024, // 250MB
 
     /*
      * This queue connection will be used to generate derived and responsive images.
