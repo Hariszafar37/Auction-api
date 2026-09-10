@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Vehicle;
 
 use App\Http\Controllers\Controller;
+use App\Support\ConditionLight;
 use App\Http\Resources\Vehicle\PublicVehicleResource;
 use App\Models\Auction;
 use App\Models\Vehicle;
@@ -44,6 +45,10 @@ class VehicleController extends Controller
     {
         $perPage = min((int) $request->input('per_page', 20), 50);
 
+        // Resolved once: normalizing inside the filter below would run — and log —
+        // twice per request, doubling the legacy-value counts we rely on.
+        $conditionLight = ConditionLight::normalize($request->condition_light);
+
         $query = Vehicle::publiclyVisible($request->user())
             ->with([
                 'activeLot.auction',
@@ -74,9 +79,9 @@ class VehicleController extends Controller
             ->when($request->drivetrain,   fn ($q, $v) => $q->where('drivetrain', 'like', "%{$v}%"))
             ->when($request->color,        fn ($q, $v) => $q->where('exterior_color', 'like', "%{$v}%"))
             ->when(
-                // `blue` is normalized so a link saved before the rename still filters.
-                in_array(\App\Support\ConditionLight::normalize($request->condition_light), \App\Support\ConditionLight::ALL, true),
-                fn ($q) => $q->where('condition_light', \App\Support\ConditionLight::normalize($request->condition_light))
+                // A `blue` link saved before the rename still filters correctly.
+                in_array($conditionLight, ConditionLight::ALL, true),
+                fn ($q) => $q->where('condition_light', $conditionLight)
             );
 
         $this->applySort($query, $request->sort);

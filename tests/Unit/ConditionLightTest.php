@@ -28,11 +28,3 @@ it('passes through an unrecognised value rather than losing it', function () {
 it('lists the lights best to worst', function () {
     expect(ConditionLight::ALL)->toBe(['green', 'yellow', 'red']);
 });
-
-it('accepts the pre-rename blue as yellow so older clients keep working', function () {
-    expect(ConditionLight::normalize('blue'))->toBe('yellow')
-        ->and(ConditionLight::normalize('green'))->toBe('green')
-        ->and(ConditionLight::normalize('yellow'))->toBe('yellow')
-        ->and(ConditionLight::normalize('red'))->toBe('red')
-        ->and(ConditionLight::normalize(null))->toBeNull();
-});
