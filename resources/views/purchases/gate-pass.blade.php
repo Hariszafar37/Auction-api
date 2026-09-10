@@ -113,7 +113,7 @@
             <div>
                 <div class="info-row"><span class="info-label">VIN</span><span class="info-value">{{ $vehicle?->vin }}</span></div>
                 <div class="info-row"><span class="info-label">Mileage</span><span class="info-value">{{ $vehicle?->mileage ? number_format($vehicle->mileage) . ' mi' : '—' }}</span></div>
-                <div class="info-row"><span class="info-label">Condition</span><span class="info-value">{{ ucfirst($vehicle?->condition_light ?? '—') }}</span></div>
+                <div class="info-row"><span class="info-label">Condition</span><span class="info-value">{{ \App\Support\ConditionLight::describe($vehicle?->condition_light) }}</span></div>
             </div>
             <div>
                 <div class="info-row"><span class="info-label">Sale Price</span><span class="info-value">${{ number_format($lot?->sold_price ?? 0) }}</span></div>
