@@ -70,7 +70,7 @@ class VehicleExport
                     $v->transmission ?? '',
                     $v->engine ?? '',
                     $v->fuel_type ?? '',
-                    $v->condition_light,
+                    \App\Support\ConditionLight::describe($v->condition_light),
                     $v->has_title ? 'Yes' : 'No',
                     $v->title_state ?? '',
                     $v->status,
