@@ -37,7 +37,7 @@ class VehicleController extends Controller
      *   fuel_type        — exact match
      *   drivetrain       — case-insensitive partial match
      *   color            — case-insensitive partial match on exterior color
-     *   condition_light  — green | red | blue
+     *   condition_light  — green | yellow | red
      *   sort             — newest (default) | oldest | year_desc | year_asc | mileage_desc | mileage_asc
      */
     public function index(Request $request): JsonResponse
@@ -73,7 +73,7 @@ class VehicleController extends Controller
             ->when($request->fuel_type,    fn ($q, $v) => $q->where('fuel_type', $v))
             ->when($request->drivetrain,   fn ($q, $v) => $q->where('drivetrain', 'like', "%{$v}%"))
             ->when($request->color,        fn ($q, $v) => $q->where('exterior_color', 'like', "%{$v}%"))
-            ->when($request->condition_light && in_array($request->condition_light, ['green', 'red', 'blue']),
+            ->when($request->condition_light && in_array($request->condition_light, ['green', 'yellow', 'red']),
                 fn ($q) => $q->where('condition_light', $request->condition_light)
             );
 

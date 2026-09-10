@@ -45,7 +45,7 @@ class VehicleFactory extends Factory
             'transmission'    => $this->faker->optional(0.7)->randomElement(['Automatic', 'Manual', 'CVT']),
             'engine'          => $this->faker->optional(0.7)->randomElement(['2.0L 4-Cylinder', '2.5L 4-Cylinder', '3.5L V6', '5.0L V8']),
             'fuel_type'       => $this->faker->optional(0.8)->randomElement(['Gasoline', 'Diesel', 'Electric', 'Hybrid']),
-            'condition_light' => $this->faker->randomElement(['green', 'red', 'blue']),
+            'condition_light' => $this->faker->randomElement(['green', 'yellow', 'red']),
             'condition_notes' => $this->faker->optional(0.5)->sentence(),
             'has_title'       => $this->faker->boolean(80),
             'title_state'     => $this->faker->optional(0.7)->stateAbbr(),

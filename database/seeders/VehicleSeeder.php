@@ -128,7 +128,7 @@ class VehicleSeeder extends Seeder
                 'transmission'    => 'Automatic',
                 'engine'          => '2.0L Turbocharged 4-Cylinder',
                 'fuel_type'       => 'Gasoline',
-                'condition_light' => 'blue',
+                'condition_light' => 'yellow',
                 'condition_notes' => 'Title attached separately — arrives within 21 days.',
                 'has_title'       => false,
                 'title_state'     => 'DC',
