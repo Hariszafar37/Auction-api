@@ -72,6 +72,10 @@ class DealerVehicleController extends Controller
             );
         }
 
+        if ($request->has('condition_light')) {
+            $request->merge(['condition_light' => \App\Support\ConditionLight::normalize($request->input('condition_light'))]);
+        }
+
         $data = $request->validate([
             'vin'             => ['required', 'string', 'size:17', 'unique:vehicles,vin'],
             'asset_number'    => ['nullable', 'string', 'max:100'],

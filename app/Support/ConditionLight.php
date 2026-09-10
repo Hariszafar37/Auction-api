@@ -31,6 +31,18 @@ final class ConditionLight
         self::RED    => 'Red',
     ];
 
+    /**
+     * Accepts the pre-rename `blue` and returns `yellow`.
+     *
+     * Transitional: a client built against the old enum keeps working while the
+     * API and the web app are rolled out separately. Safe to drop once no
+     * deployed client sends `blue`.
+     */
+    public static function normalize(?string $light): ?string
+    {
+        return $light === 'blue' ? self::YELLOW : $light;
+    }
+
     /** "Runs but has issues" — the description on its own. */
     public static function label(?string $light): string
     {

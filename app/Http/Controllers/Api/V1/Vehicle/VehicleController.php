@@ -73,8 +73,10 @@ class VehicleController extends Controller
             ->when($request->fuel_type,    fn ($q, $v) => $q->where('fuel_type', $v))
             ->when($request->drivetrain,   fn ($q, $v) => $q->where('drivetrain', 'like', "%{$v}%"))
             ->when($request->color,        fn ($q, $v) => $q->where('exterior_color', 'like', "%{$v}%"))
-            ->when($request->condition_light && in_array($request->condition_light, ['green', 'yellow', 'red']),
-                fn ($q) => $q->where('condition_light', $request->condition_light)
+            ->when(
+                // `blue` is normalized so a link saved before the rename still filters.
+                in_array(\App\Support\ConditionLight::normalize($request->condition_light), \App\Support\ConditionLight::ALL, true),
+                fn ($q) => $q->where('condition_light', \App\Support\ConditionLight::normalize($request->condition_light))
             );
 
         $this->applySort($query, $request->sort);

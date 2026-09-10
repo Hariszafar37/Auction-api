@@ -12,6 +12,15 @@ class UpdateVehicleRequest extends FormRequest
         return true; // admin route is already guarded by role:admin middleware
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('condition_light')) {
+            $this->merge([
+                'condition_light' => \App\Support\ConditionLight::normalize($this->input('condition_light')),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
         $vehicleId = $this->route('vehicle')?->id;
