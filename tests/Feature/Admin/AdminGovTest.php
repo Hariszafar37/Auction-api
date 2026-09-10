@@ -120,6 +120,71 @@ it('non-admin cannot create government account', function () {
         ->assertStatus(403);
 });
 
+// -- Invitation is issued on creation --------------------------------------
+
+it('emails an invitation as soon as the government account is created', function () {
+    $admin = makeGovAdmin();
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/admin/government', govPayload(['email' => 'newfleet@baltimore.gov']));
+
+    $response->assertStatus(201)
+        ->assertJsonPath('data.invite_sent', true);
+
+    $gov = User::where('email', 'newfleet@baltimore.gov')->firstOrFail();
+
+    Notification::assertSentTo($gov, App\Notifications\GovAccountInvite::class);
+
+    $profile = GovProfile::where('user_id', $gov->id)->firstOrFail();
+
+    expect($profile->invite_token)->not->toBeNull()
+        ->and($profile->invite_sent_at)->not->toBeNull();
+});
+
+it('keeps the account and its token when the invitation email fails to send', function () {
+    $admin = makeGovAdmin();
+
+    $this->mock(Illuminate\Contracts\Notifications\Dispatcher::class, function ($mock) {
+        $mock->shouldReceive('send')->andThrow(new RuntimeException('SMTP down'));
+        $mock->shouldReceive('sendNow')->andThrow(new RuntimeException('SMTP down'));
+    });
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/v1/admin/government', govPayload(['email' => 'mailfail@baltimore.gov']));
+
+    $response->assertStatus(201)
+        ->assertJsonPath('data.invite_sent', false);
+
+    $gov = User::where('email', 'mailfail@baltimore.gov')->firstOrFail();
+
+    // The token is persisted regardless, so "Resend invitation" can recover.
+    expect(GovProfile::where('user_id', $gov->id)->first()->invite_token)->not->toBeNull();
+});
+
+it('refuses to resend an invitation that has already been accepted', function () {
+    $admin = makeGovAdmin();
+
+    $gov = User::factory()->create(['account_type' => 'government']);
+    GovProfile::create([
+        'user_id'            => $gov->id,
+        'entity_name'           => 'Accepted Agency',
+        'entity_subtype'        => 'government',
+        'point_of_contact_name' => 'Pat Official',
+        'phone'                 => '410-555-2000',
+        'address'               => '200 Agency Way',
+        'city'                  => 'Baltimore',
+        'state'                 => 'MD',
+        'zip'                   => '21201',
+        'approval_status'       => 'pending',
+        'invite_accepted_at'    => now(),
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/government/{$gov->id}/invite")
+        ->assertStatus(422)
+        ->assertJsonPath('code', 'already_accepted');
+});
+
 // ── Send invite ───────────────────────────────────────────────────────────
 
 it('admin can send an invite to a government user', function () {
