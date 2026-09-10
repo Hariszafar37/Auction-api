@@ -157,8 +157,73 @@ it('keeps the account and its token when the invitation email fails to send', fu
 
     $gov = User::where('email', 'mailfail@baltimore.gov')->firstOrFail();
 
-    // The token is persisted regardless, so "Resend invitation" can recover.
-    expect(GovProfile::where('user_id', $gov->id)->first()->invite_token)->not->toBeNull();
+    $profile = GovProfile::where('user_id', $gov->id)->first();
+
+    // The token is persisted regardless, so "Resend invitation" can recover,
+    // but nothing was delivered so the account must not claim it was sent.
+    expect($profile->invite_token)->not->toBeNull()
+        ->and($profile->invite_sent_at)->toBeNull();
+});
+
+it('keeps the existing invitation alive when a resend fails to deliver', function () {
+    $admin = makeGovAdmin();
+
+    $gov = User::factory()->create(['account_type' => 'government']);
+    $profile = GovProfile::create([
+        'user_id'               => $gov->id,
+        'entity_name'           => 'Stranded Agency',
+        'entity_subtype'        => 'government',
+        'point_of_contact_name' => 'Pat Official',
+        'phone'                 => '410-555-3000',
+        'address'               => '300 Agency Way',
+        'city'                  => 'Baltimore',
+        'state'                 => 'MD',
+        'zip'                   => '21201',
+        'approval_status'       => 'pending',
+        'invite_token'          => 'the-link-already-in-their-inbox',
+        'invite_sent_at'        => now()->subDay(),
+    ]);
+
+    $this->mock(Illuminate\Contracts\Notifications\Dispatcher::class, function ($mock) {
+        $mock->shouldReceive('send')->andThrow(new RuntimeException('SMTP down'));
+        $mock->shouldReceive('sendNow')->andThrow(new RuntimeException('SMTP down'));
+    });
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/government/{$gov->id}/invite")
+        ->assertStatus(503)
+        ->assertJsonPath('code', 'mail_failed');
+
+    // Rotating the token before delivery would have killed a working link.
+    expect($profile->refresh()->invite_token)->toBe('the-link-already-in-their-inbox');
+});
+
+it('rotates the token only once the resend has actually gone out', function () {
+    $admin = makeGovAdmin();
+
+    $gov = User::factory()->create(['account_type' => 'government']);
+    $profile = GovProfile::create([
+        'user_id'               => $gov->id,
+        'entity_name'           => 'Resend Agency',
+        'entity_subtype'        => 'government',
+        'point_of_contact_name' => 'Pat Official',
+        'phone'                 => '410-555-4000',
+        'address'               => '400 Agency Way',
+        'city'                  => 'Baltimore',
+        'state'                 => 'MD',
+        'zip'                   => '21201',
+        'approval_status'       => 'pending',
+        'invite_token'          => 'old-token',
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/v1/admin/government/{$gov->id}/invite")
+        ->assertOk();
+
+    Notification::assertSentTo($gov, App\Notifications\GovAccountInvite::class);
+
+    expect($profile->refresh()->invite_token)->not->toBe('old-token')
+        ->and($profile->invite_sent_at)->not->toBeNull();
 });
 
 it('refuses to resend an invitation that has already been accepted', function () {

@@ -55,7 +55,6 @@ class AdminGovController extends Controller
                 'zip'                   => $request->zip,
                 'approval_status'       => 'pending',
                 'invite_token'          => $token,
-                'invite_sent_at'        => now(),
             ]);
 
             return [$user, $profile, $token];
@@ -71,6 +70,12 @@ class AdminGovController extends Controller
         // roll back the account. The token is already persisted either way, so the
         // admin can resend from the account detail page.
         $invitationSent = $this->deliverInvite($user, $token);
+
+        // `invite_sent_at` records a delivery, not an attempt, so the detail page
+        // reads "Not sent" and offers "Send invitation" when the mail failed.
+        if ($invitationSent) {
+            $profile->update(['invite_sent_at' => now()]);
+        }
 
         return $this->success(
             [
@@ -104,14 +109,17 @@ class AdminGovController extends Controller
 
         $token = Str::random(64);
 
+        // Deliver before persisting. Rotating the token first would invalidate an
+        // invitation that is already in the holder's inbox, so a failed resend
+        // would leave the account with no working link at all.
+        if (! $this->deliverInvite($user, $token)) {
+            return $this->error('The invitation email could not be sent. Please try again.', 503, 'mail_failed');
+        }
+
         $profile->update([
             'invite_token'   => $token,
             'invite_sent_at' => now(),
         ]);
-
-        if (! $this->deliverInvite($user, $token)) {
-            return $this->error('The invitation email could not be sent. Please try again.', 502, 'mail_failed');
-        }
 
         return $this->success(
             ['invite_sent_at' => $profile->refresh()->invite_sent_at?->toIso8601String()],
