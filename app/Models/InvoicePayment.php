@@ -48,6 +48,35 @@ class InvoicePayment extends Model
     protected $hidden = ['stripe_client_secret'];
 
     /**
+     * Statuses a stripe_card row can hold while no money has moved.
+     *
+     * 'pending'  — a PaymentIntent exists but the buyer has not successfully
+     *              submitted card details (Stripe shows it as "Incomplete").
+     * 'canceled' — the intent was abandoned and has since been cancelled, either
+     *              by the buyer, by the reconciliation sweeper, or by Stripe's own
+     *              24-hour auto-cancel relayed through payment_intent.canceled.
+     *
+     * A card charge is synchronous: it settles to 'completed' or 'failed' within
+     * seconds. Anything still in this list is therefore an unfinished attempt, not
+     * a payment in flight, and must not be shown to the buyer as one.
+     */
+    public const CARD_UNSETTLED_STATUSES = ['pending', 'canceled'];
+
+    /**
+     * True when this row is a card attempt that never moved money.
+     *
+     * Scoped deliberately to stripe_card: 'deposit' rows use their own lifecycle
+     * ('authorized' / 'requires_action' / 'failed' / 'completed') and are driven by
+     * InvoiceService, while non-card methods legitimately sit at
+     * 'pending_verification' awaiting staff review. Neither is affected here.
+     */
+    public function isUnsettledCardAttempt(): bool
+    {
+        return $this->method === PaymentMethod::StripeCard
+            && in_array($this->status, self::CARD_UNSETTLED_STATUSES, true);
+    }
+
+    /**
      * Customer-facing title for an adjustment row. Prefers the explicit fee_type
      * (e.g. "Late Payment Fee"); falls back to the reason/notes for legacy rows
      * created before fee_type existed, then a generic label. Display-only — the

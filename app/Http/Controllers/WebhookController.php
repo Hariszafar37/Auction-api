@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\InvoiceStatus;
+use App\Enums\PaymentMethod;
 use App\Mail\PaymentReceived;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
@@ -45,6 +46,7 @@ class WebhookController extends Controller
         match ($event->type) {
             'payment_intent.succeeded'      => $this->handlePaymentSucceeded($event->data->object),
             'payment_intent.payment_failed' => $this->handlePaymentFailed($event->data->object),
+            'payment_intent.canceled'       => $this->handlePaymentCanceled($event->data->object),
             default                         => null, // unhandled events — still return 200
         };
 
@@ -180,11 +182,60 @@ class WebhookController extends Controller
         }
     }
 
+    /**
+     * A card PaymentIntent was cancelled — by the buyer abandoning the form, by
+     * the reconciliation sweeper, or by Stripe's own 24-hour auto-cancel of an
+     * intent that never received payment details.
+     *
+     * Gives the row a terminal status so it stops looking like a payment in
+     * flight. Deliberately narrow:
+     *   - only stripe_card rows are touched; 'deposit' rows have their own
+     *     lifecycle driven by InvoiceService and must not be reinterpreted here;
+     *   - a row that already settled is never downgraded — cancelling an intent
+     *     cannot un-take money that Stripe confirmed.
+     */
+    private function handlePaymentCanceled(object $paymentIntent): void
+    {
+        $payment = InvoicePayment::where('reference', $paymentIntent->id)->first();
+
+        if (! $payment || $payment->method !== PaymentMethod::StripeCard) {
+            return;
+        }
+
+        if (in_array($payment->status, ['completed', 'verified'], true)) {
+            Log::info('Stripe webhook: ignoring cancel for an already-settled payment', [
+                'payment_intent_id' => $paymentIntent->id,
+                'payment_id'        => $payment->id,
+            ]);
+            return;
+        }
+
+        if ($payment->status === 'canceled') {
+            return; // already terminal — webhook replay
+        }
+
+        $payment->update([
+            'status'               => 'canceled',
+            'stripe_client_secret' => null,
+        ]);
+    }
+
     private function handlePaymentFailed(object $paymentIntent): void
     {
         $payment = InvoicePayment::where('reference', $paymentIntent->id)->first();
 
         if (! $payment) {
+            return;
+        }
+
+        // Never downgrade a settled payment. Stripe can deliver events out of
+        // order, and a decline event arriving after the succeeded event must not
+        // strip the credit off an invoice that is already paid.
+        if (in_array($payment->status, ['completed', 'verified'], true)) {
+            Log::info('Stripe webhook: ignoring failure for an already-settled payment', [
+                'payment_intent_id' => $paymentIntent->id,
+                'payment_id'        => $payment->id,
+            ]);
             return;
         }
 
