@@ -23,12 +23,20 @@ class AdminUserSeeder extends Seeder
                 'password'                => Hash::make('password'),
                 'status'                  => 'active',
                 'account_type'            => 'individual',
-                'email_verified_at'       => now(),
                 'agreed_terms_at'         => now(),
                 'password_set_at'         => now(),
                 'activation_completed_at' => now(),
             ]
         );
+
+        // Not in the attribute array above: `email_verified_at` is absent from
+        // User::$fillable, so firstOrCreate() filters it out silently and the
+        // seeded admin ends up active but unverified — which trips every
+        // hasVerifiedEmail() check. Guarded so re-running does not move the
+        // timestamp on an already-verified account.
+        if (! $admin->hasVerifiedEmail()) {
+            $admin->markEmailAsVerified();
+        }
 
         // Ensure admin role is assigned (idempotent — safe to re-run)
         $admin->syncRoles(['admin']);

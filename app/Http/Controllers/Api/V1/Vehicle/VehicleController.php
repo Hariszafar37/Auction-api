@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Vehicle;
 
 use App\Http\Controllers\Controller;
+use App\Support\ConditionLight;
 use App\Http\Resources\Vehicle\PublicVehicleResource;
 use App\Models\Auction;
 use App\Models\Vehicle;
@@ -37,12 +38,16 @@ class VehicleController extends Controller
      *   fuel_type        — exact match
      *   drivetrain       — case-insensitive partial match
      *   color            — case-insensitive partial match on exterior color
-     *   condition_light  — green | red | blue
+     *   condition_light  — green | yellow | red
      *   sort             — newest (default) | oldest | year_desc | year_asc | mileage_desc | mileage_asc
      */
     public function index(Request $request): JsonResponse
     {
         $perPage = min((int) $request->input('per_page', 20), 50);
+
+        // Resolved once: normalizing inside the filter below would run — and log —
+        // twice per request, doubling the legacy-value counts we rely on.
+        $conditionLight = ConditionLight::normalize($request->condition_light);
 
         $query = Vehicle::publiclyVisible($request->user())
             ->with([
@@ -73,8 +78,10 @@ class VehicleController extends Controller
             ->when($request->fuel_type,    fn ($q, $v) => $q->where('fuel_type', $v))
             ->when($request->drivetrain,   fn ($q, $v) => $q->where('drivetrain', 'like', "%{$v}%"))
             ->when($request->color,        fn ($q, $v) => $q->where('exterior_color', 'like', "%{$v}%"))
-            ->when($request->condition_light && in_array($request->condition_light, ['green', 'red', 'blue']),
-                fn ($q) => $q->where('condition_light', $request->condition_light)
+            ->when(
+                // A `blue` link saved before the rename still filters correctly.
+                in_array($conditionLight, ConditionLight::ALL, true),
+                fn ($q) => $q->where('condition_light', $conditionLight)
             );
 
         $this->applySort($query, $request->sort);

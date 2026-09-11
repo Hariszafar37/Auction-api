@@ -13,6 +13,7 @@ use App\Services\Approval\ApprovalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class AdminGovController extends Controller
@@ -24,7 +25,7 @@ class AdminGovController extends Controller
      */
     public function store(CreateGovProfileRequest $request): JsonResponse
     {
-        [$user, $profile] = DB::transaction(function () use ($request): array {
+        [$user, $profile, $token] = DB::transaction(function () use ($request): array {
             $user = User::create([
                 'name'         => $request->point_of_contact_name,
                 'first_name'   => $request->point_of_contact_name,
@@ -36,6 +37,8 @@ class AdminGovController extends Controller
             ]);
 
             $user->assignRole('buyer');
+
+            $token = Str::random(64);
 
             $profile = GovProfile::create([
                 'user_id'               => $user->id,
@@ -51,14 +54,38 @@ class AdminGovController extends Controller
                 'state'                 => $request->state,
                 'zip'                   => $request->zip,
                 'approval_status'       => 'pending',
+                'invite_token'          => $token,
             ]);
 
-            return [$user, $profile];
+            return [$user, $profile, $token];
         });
 
+        // The account is created with `status = pending_email_verification` and no
+        // password, so it is unusable until the holder accepts an invitation. That
+        // invitation used to be a separate manual step that the admin UI never
+        // exposed, which left every government account stranded — so it is issued
+        // here, on creation.
+        //
+        // Delivery happens after the transaction commits: a mail outage must not
+        // roll back the account. The token is already persisted either way, so the
+        // admin can resend from the account detail page.
+        $invitationSent = $this->deliverInvite($user, $token);
+
+        // `invite_sent_at` records a delivery, not an attempt, so the detail page
+        // reads "Not sent" and offers "Send invitation" when the mail failed.
+        if ($invitationSent) {
+            $profile->update(['invite_sent_at' => now()]);
+        }
+
         return $this->success(
-            ['user' => $user->only(['id', 'name', 'email', 'account_type', 'status']), 'gov_profile' => $profile],
-            'Government account created.',
+            [
+                'user'        => $user->only(['id', 'name', 'email', 'account_type', 'status']),
+                'gov_profile' => $profile->refresh(),
+                'invite_sent' => $invitationSent,
+            ],
+            $invitationSent
+                ? 'Government account created and invitation emailed.'
+                : 'Government account created, but the invitation email could not be sent. Use “Resend invitation” to try again.',
             201
         );
     }
@@ -70,16 +97,56 @@ class AdminGovController extends Controller
      */
     public function sendInvite(User $user): JsonResponse
     {
+        $profile = $user->govProfile;
+
+        if (! $profile) {
+            return $this->error('No government profile found for this user.', 404, 'not_found');
+        }
+
+        if ($profile->invite_accepted_at) {
+            return $this->error('This invitation has already been accepted.', 422, 'already_accepted');
+        }
+
         $token = Str::random(64);
 
-        $user->govProfile()->update([
+        // Deliver before persisting. Rotating the token first would invalidate an
+        // invitation that is already in the holder's inbox, so a failed resend
+        // would leave the account with no working link at all.
+        if (! $this->deliverInvite($user, $token)) {
+            return $this->error('The invitation email could not be sent. Please try again.', 503, 'mail_failed');
+        }
+
+        $profile->update([
             'invite_token'   => $token,
             'invite_sent_at' => now(),
         ]);
 
-        $user->notify(new GovAccountInvite($token));
+        return $this->success(
+            ['invite_sent_at' => $profile->refresh()->invite_sent_at?->toIso8601String()],
+            'Invitation sent.'
+        );
+    }
 
-        return $this->success(null, 'Invitation sent.');
+    /**
+     * Email the invitation, reporting whether it actually went out.
+     *
+     * Mail failure is logged rather than thrown so a delivery outage degrades to
+     * "resend later" instead of losing an account the admin has already keyed in.
+     */
+    private function deliverInvite(User $user, string $token): bool
+    {
+        try {
+            $user->notify(new GovAccountInvite($token));
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('Government account invitation failed to send.', [
+                'user_id' => $user->id,
+                'error'   => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**

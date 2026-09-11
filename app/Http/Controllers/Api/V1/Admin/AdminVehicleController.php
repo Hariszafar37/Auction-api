@@ -47,6 +47,10 @@ class AdminVehicleController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        if ($request->has('condition_light')) {
+            $request->merge(['condition_light' => \App\Support\ConditionLight::normalize($request->input('condition_light'))]);
+        }
+
         $data = $request->validate([
             'seller_id'       => ['required', 'integer', 'exists:users,id'],
             'vin'             => ['required', 'string', 'size:17', 'unique:vehicles,vin'],
@@ -69,7 +73,7 @@ class AdminVehicleController extends Controller
             'engine'          => ['nullable', 'string', 'max:50'],
             'fuel_type'       => ['nullable', 'string', 'max:30'],
             'drivetrain'      => ['nullable', 'string', 'max:30'],
-            'condition_light'      => ['required', 'in:green,red,blue'],
+            'condition_light'      => ['required', 'in:green,yellow,red'],
             'condition_notes'      => ['nullable', 'string', 'max:1000'],
             'condition_report_url' => ['nullable', 'url', 'max:2048'],
             'additional_info'      => ['nullable', 'string'],
