@@ -112,11 +112,17 @@ class AdminUserController extends Controller
             'password'                => Hash::make($request->password),
             'account_type'            => 'individual',
             'status'                  => 'active',
-            'email_verified_at'       => now(),
             'agreed_terms_at'         => now(),
             'password_set_at'         => now(),
             'activation_completed_at' => now(),
         ]);
+
+        // Not part of the create() above: `email_verified_at` is not in
+        // User::$fillable, so mass assignment drops it without error and the
+        // account ends up active yet unverified — which trips hasVerifiedEmail()
+        // checks elsewhere. Admin-created accounts need no verification email,
+        // so mark them verified explicitly.
+        $user->markEmailAsVerified();
 
         $user->syncRoles([$request->role]);
 
