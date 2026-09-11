@@ -3,6 +3,7 @@
 use App\Models\GovProfile;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
@@ -10,12 +11,16 @@ beforeEach(function () {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Mirrors AdminGovController::store(): the account is created with no password
+// and, crucially, no `email_verified_at`. UserFactory's default state fills that
+// column in, which previously hid a mass-assignment bug in acceptInvite() behind
+// a green suite — `unverified()` keeps the fixture honest to production.
 function makeInvitedGovUser(string $token = 'test-invite-token-abc123'): array
 {
-    $user = User::factory()->create([
+    $user = User::factory()->unverified()->create([
         'email'        => 'gov@example.gov',
         'account_type' => 'government',
-        'status'       => 'pending',
+        'status'       => 'pending_email_verification',
         'password'     => null,
     ]);
     $user->assignRole('buyer');
@@ -98,6 +103,44 @@ it('accepts invite, marks email verified, and advances status to pending_passwor
         ->and($user->status)->toBe('pending_password')
         ->and($profile->invite_accepted_at)->not->toBeNull()
         ->and($profile->invite_token)->toBeNull();
+});
+
+it('persists email_verified_at on acceptance even though the column is not fillable', function () {
+    [$user] = makeInvitedGovUser('not-fillable-token');
+
+    expect($user->email_verified_at)->toBeNull();
+
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'not-fillable-token',
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])->assertOk();
+
+    // Reading straight from the database: the regression was that Eloquent
+    // dropped this key during mass assignment, leaving the row NULL while the
+    // in-memory model looked correct.
+    $row = DB::table('users')->where('id', $user->id)->first();
+
+    expect($row->email_verified_at)->not->toBeNull()
+        ->and($row->status)->toBe('pending_password');
+});
+
+it('lets an invited gov user set a password immediately after accepting', function () {
+    makeInvitedGovUser('regression-set-password-token');
+
+    $this->postJson('/api/v1/auth/accept-invite', [
+        'token'                    => 'regression-set-password-token',
+        'agree_ecomm_consent'      => true,
+        'agree_accuracy_confirmed' => true,
+    ])->assertOk();
+
+    // Previously returned 422 `email_not_verified`, which stranded the account:
+    // the invite token is cleared on acceptance, so the link could not be replayed.
+    $this->postJson('/api/v1/auth/set-password', [
+        'email'                 => 'gov@example.gov',
+        'password'              => 'SecurePass123!',
+        'password_confirmation' => 'SecurePass123!',
+    ])->assertOk();
 });
 
 it('returns 404 for invalid token on acceptance', function () {
