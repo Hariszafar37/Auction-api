@@ -29,6 +29,14 @@ class PaymentController extends Controller
      *
      * FIX 1 (idempotency): Uses Stripe idempotency key so repeat calls return the same PI.
      * Also checks for an existing pending payment to avoid creating duplicate InvoicePayment records.
+     *
+     * FIX 4 (no phantom payments): the client calls this at the moment the buyer
+     * submits a complete card — not when the card form is opened. The 'pending'
+     * InvoicePayment written here therefore represents a real submission attempt.
+     * It is short-lived: the webhook flips it to 'completed' or 'failed' within
+     * seconds, and payments:cancel-abandoned-intents retires anything left behind.
+     * While it is pending it stays out of the buyer-facing payment history
+     * (see InvoiceResource) so a half-finished attempt can never read as a payment.
      */
     public function createPaymentIntent(Request $request, Invoice $invoice): JsonResponse
     {
@@ -44,38 +52,35 @@ class PaymentController extends Controller
             return $this->error('Card payments are temporarily unavailable.', 503, 'stripe_not_configured');
         }
 
-        // Partial-payment support is fully opt-in: without an `amount` the flow is
-        // byte-for-byte identical to before (full balance, shared idempotency key,
-        // reuse of any pending card payment). An `amount` enables a partial charge
-        // while keeping each distinct amount idempotent and reusable on its own.
+        // Partial-payment support is fully opt-in: without an `amount` the charge is
+        // for the full balance due. An `amount` enables a partial charge.
         $requestedAmount = $request->input('amount');
 
         if ($requestedAmount === null) {
-            // ── DEFAULT PATH (unchanged) ──────────────────────────────────────
-            $existing = $invoice->payments()
-                ->where('method', 'stripe_card')
-                ->where('status', 'pending')
-                ->first();
-
-            $amount         = (float) $invoice->balance_due;
-            $idempotencyKey = 'invoice_pi_' . $invoice->id;
+            $amount = (float) $invoice->balance_due;
         } else {
-            // ── PARTIAL PATH (opt-in) ─────────────────────────────────────────
             $request->validate(['amount' => ['numeric', 'min:0.01']]);
             $amount = round((float) $requestedAmount, 2);
 
             if ($amount > (float) $invoice->balance_due) {
                 return $this->error('Payment amount exceeds balance due.', 422, 'amount_exceeds_balance');
             }
-
-            $existing = $invoice->payments()
-                ->where('method', 'stripe_card')
-                ->where('status', 'pending')
-                ->where('amount', $amount)
-                ->first();
-
-            $idempotencyKey = 'invoice_pi_' . $invoice->id . '_' . (int) round($amount * 100);
         }
+
+        // The amount keys both the idempotency token and the reuse lookup, so a
+        // previously-created intent is only ever handed back when it is for exactly
+        // the amount now owed. This matters because AccrueStorageFees raises
+        // balance_due daily: reusing an intent by invoice alone (as the default path
+        // once did) could serve a buyer yesterday's intent and under-charge them.
+        // A pending intent for a superseded amount is simply not reused here; the
+        // payments:cancel-abandoned-intents sweeper retires it in Stripe.
+        $idempotencyKey = 'invoice_pi_' . $invoice->id . '_' . (int) round($amount * 100);
+
+        $existing = $invoice->payments()
+            ->where('method', 'stripe_card')
+            ->where('status', 'pending')
+            ->where('amount', $amount)
+            ->first();
 
         if ($existing && $existing->stripe_client_secret) {
             return $this->success([
@@ -101,15 +106,39 @@ class PaymentController extends Controller
             'idempotency_key' => $idempotencyKey,
         ]);
 
-        $payment = InvoicePayment::create([
-            'invoice_id'           => $invoice->id,
-            'user_id'              => $request->user()->id,
-            'method'               => 'stripe_card',
-            'amount'               => $amount,
-            'reference'            => $pi->id,
-            'stripe_client_secret' => $pi->client_secret,
-            'status'               => 'pending',
-        ]);
+        // invoice_payments.reference is UNIQUE, and the idempotency key above means
+        // Stripe can legitimately hand back a PaymentIntent we already have a row
+        // for — most often when the buyer retries after a decline on the same,
+        // still-unconfirmed intent (the row is 'failed' by then, so the reuse lookup
+        // above misses it). A blind create() would violate the unique index and
+        // 500 the retry, so adopt the existing row instead.
+        $payment = InvoicePayment::withTrashed()->where('reference', $pi->id)->first();
+
+        if ($payment) {
+            if ($payment->trashed()) {
+                $payment->restore();
+            }
+
+            // A settled payment is never reopened — an idempotent replay must not
+            // downgrade money Stripe already confirmed.
+            if (! in_array($payment->status, ['completed', 'verified'], true)) {
+                $payment->update([
+                    'amount'               => $amount,
+                    'stripe_client_secret' => $pi->client_secret,
+                    'status'               => 'pending',
+                ]);
+            }
+        } else {
+            $payment = InvoicePayment::create([
+                'invoice_id'           => $invoice->id,
+                'user_id'              => $request->user()->id,
+                'method'               => 'stripe_card',
+                'amount'               => $amount,
+                'reference'            => $pi->id,
+                'stripe_client_secret' => $pi->client_secret,
+                'status'               => 'pending',
+            ]);
+        }
 
         return $this->success([
             'payment_id'    => $payment->id,

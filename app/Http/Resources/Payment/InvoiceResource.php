@@ -71,7 +71,22 @@ class InvoiceResource extends JsonResource
             'fee_snapshot' => $this->when($isAdmin, $this->fee_snapshot),
 
             // Payments
-            'payments' => InvoicePaymentResource::collection($this->whenLoaded('payments')),
+            //
+            // Buyers see the settled ledger only. A stripe_card row sitting at
+            // 'pending' or 'canceled' is an unfinished attempt where no money ever
+            // moved — surfacing it made an abandoned card form look like a payment
+            // in progress. Real declines still show, because the
+            // payment_intent.payment_failed webhook marks them 'failed'.
+            //
+            // Admins keep the complete, unfiltered ledger for reconciliation; rows
+            // are filtered from this payload, never deleted, so the immutable
+            // ledger guarantee is preserved.
+            'payments' => InvoicePaymentResource::collection(
+                $this->whenLoaded('payments', fn () => $isAdmin
+                    ? $this->payments
+                    : $this->payments->reject(fn ($p) => $p->isUnsettledCardAttempt())->values()
+                )
+            ),
 
             // Buyer info — only for admin
             'buyer' => $this->when($isAdmin && $this->relationLoaded('buyer'), fn () => [
