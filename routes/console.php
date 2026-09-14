@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\AccrueStorageFees;
+use App\Console\Commands\CancelAbandonedPaymentIntents;
 use App\Console\Commands\CheckDepositExpiry;
 use App\Console\Commands\MarkOverdueInvoices;
 use App\Console\Commands\ReleaseSellerSettlements;
@@ -52,6 +53,14 @@ Schedule::command(AccrueStorageFees::class)->dailyAt('00:05');
 
 // Warn about deposit PIs approaching Stripe 7-day expiry
 Schedule::command(CheckDepositExpiry::class)->dailyAt('08:00');
+
+// Cancel card PaymentIntents the buyer started but never completed, so they stop
+// showing as "Incomplete" in Stripe and as an unfinished attempt in our ledger.
+// Hourly with a 60-minute age floor: long enough that a buyer still filling in the
+// form is never interrupted, short enough that nothing lingers for a day.
+Schedule::command(CancelAbandonedPaymentIntents::class)
+    ->hourly()
+    ->withoutOverlapping();
 
 /*
 |--------------------------------------------------------------------------
