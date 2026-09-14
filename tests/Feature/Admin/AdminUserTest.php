@@ -33,6 +33,30 @@ function makeDealer(string $approvalStatus = 'pending'): User
     return $dealer;
 }
 
+// ── User Creation ─────────────────────────────────────────────────────────
+
+it('marks an admin-created user as email-verified', function () {
+    $this->actingAs(makeAdmin(), 'sanctum')
+        ->postJson('/api/v1/admin/users', [
+            'name'                  => 'Staff Member',
+            'email'                 => 'staff.member@example.com',
+            'password'              => 'SecurePass123!',
+            'password_confirmation' => 'SecurePass123!',
+            'role'                  => 'staff',
+        ])
+        ->assertStatus(201);
+
+    // `email_verified_at` is not fillable, so the controller has to set it
+    // outside the create() call — asserting on the stored row rather than the
+    // response is what catches a silent mass-assignment drop.
+    $created = User::where('email', 'staff.member@example.com')->first();
+
+    expect($created)->not->toBeNull()
+        ->and($created->email_verified_at)->not->toBeNull()
+        ->and($created->hasVerifiedEmail())->toBeTrue()
+        ->and($created->status)->toBe('active');
+});
+
 // ── User List ─────────────────────────────────────────────────────────────
 
 it('allows admin to list users', function () {

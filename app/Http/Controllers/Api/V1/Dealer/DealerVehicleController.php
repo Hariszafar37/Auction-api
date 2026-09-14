@@ -72,6 +72,10 @@ class DealerVehicleController extends Controller
             );
         }
 
+        if ($request->has('condition_light')) {
+            $request->merge(['condition_light' => \App\Support\ConditionLight::normalize($request->input('condition_light'))]);
+        }
+
         $data = $request->validate([
             'vin'             => ['required', 'string', 'size:17', 'unique:vehicles,vin'],
             'asset_number'    => ['nullable', 'string', 'max:100'],
@@ -91,7 +95,7 @@ class DealerVehicleController extends Controller
             'engine'          => ['nullable', 'string', 'max:50'],
             'fuel_type'       => ['nullable', 'string', 'max:30'],
             'drivetrain'      => ['nullable', 'string', 'max:30'],
-            'condition_light'      => ['required', 'in:green,red,blue'],
+            'condition_light'      => ['required', 'in:green,yellow,red'],
             'condition_notes'      => ['nullable', 'string', 'max:1000'],
             'condition_report_url' => ['required', 'url', 'max:2048'],
             'additional_info'      => ['nullable', 'string'],

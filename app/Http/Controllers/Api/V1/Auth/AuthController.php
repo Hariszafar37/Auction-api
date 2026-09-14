@@ -348,8 +348,18 @@ class AuthController extends Controller
 
         $user = $profile->user;
 
+        // `email_verified_at` is deliberately absent from User::$fillable, so it
+        // cannot ride along in the update() below — mass assignment drops it
+        // silently and the account is left with status `pending_password` but a
+        // null verification timestamp, which then fails the hasVerifiedEmail()
+        // gate in setPassword(). Force-fill it through the MustVerifyEmail
+        // contract instead, exactly as verifyEmail() does.
+        if (! $user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+            event(new Verified($user));
+        }
+
         $user->update([
-            'email_verified_at'        => $user->email_verified_at ?? now(),
             'status'                   => 'pending_password',
             'agreed_terms_at'          => now(),
             'terms_version'            => config('app.terms_version', '1.0'),

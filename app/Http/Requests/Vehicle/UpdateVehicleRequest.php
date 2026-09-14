@@ -12,6 +12,15 @@ class UpdateVehicleRequest extends FormRequest
         return true; // admin route is already guarded by role:admin middleware
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('condition_light')) {
+            $this->merge([
+                'condition_light' => \App\Support\ConditionLight::normalize($this->input('condition_light')),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
         $vehicleId = $this->route('vehicle')?->id;
@@ -36,7 +45,7 @@ class UpdateVehicleRequest extends FormRequest
             'engine'          => ['nullable', 'string', 'max:50'],
             'fuel_type'       => ['nullable', 'string', 'max:30'],
             'drivetrain'      => ['nullable', 'string', 'max:30'],
-            'condition_light'      => ['sometimes', 'in:green,red,blue'],
+            'condition_light'      => ['sometimes', 'in:green,yellow,red'],
             'condition_notes'      => ['nullable', 'string', 'max:1000'],
             'condition_report_url' => ['nullable', 'url', 'max:2048'],
             'additional_info'      => ['nullable', 'string'],

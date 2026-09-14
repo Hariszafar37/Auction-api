@@ -300,3 +300,358 @@ test('webhook returns 200 for unrecognised payment intent', function () {
         'CONTENT_TYPE'          => 'application/json',
     ], $webhook['payload'])->assertOk();
 });
+
+// ─── Incomplete card attempts (FIX 4) ────────────────────────────────────────
+//
+// A buyer who opens the card form and never successfully submits card details
+// must not end up with a misleading "pending" row in their payment history, and
+// the abandoned PaymentIntent must not sit in Stripe as "Incomplete" forever.
+
+test('buyer payment history hides a card attempt that never settled', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_incomplete_hidden',
+        'status'     => 'pending',
+    ]);
+
+    $payments = $this->actingAs($buyer)
+        ->getJson("/api/v1/my/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toBe([]);
+});
+
+test('buyer payment history hides a cancelled card attempt', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_cancelled_hidden',
+        'status'     => 'canceled',
+    ]);
+
+    $payments = $this->actingAs($buyer)
+        ->getJson("/api/v1/my/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toBe([]);
+});
+
+test('buyer payment history still shows a genuine card decline', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_declined_visible',
+        'status'     => 'failed',
+    ]);
+
+    $payments = $this->actingAs($buyer)
+        ->getJson("/api/v1/my/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toHaveCount(1)
+        ->and($payments[0]['status'])->toBe('failed');
+});
+
+test('buyer payment history still shows a completed card payment', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id'   => $invoice->id,
+        'user_id'      => $buyer->id,
+        'method'       => 'stripe_card',
+        'amount'       => 5800,
+        'reference'    => 'pi_test_completed_visible',
+        'status'       => 'completed',
+        'processed_at' => now(),
+    ]);
+
+    $payments = $this->actingAs($buyer)
+        ->getJson("/api/v1/my/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toHaveCount(1)
+        ->and($payments[0]['status'])->toBe('completed');
+});
+
+test('buyer payment history still shows a non-card payment awaiting verification', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'wire',
+        'amount'     => 5800,
+        'reference'  => 'wire_ref_001',
+        'status'     => 'pending_verification',
+    ]);
+
+    $payments = $this->actingAs($buyer)
+        ->getJson("/api/v1/my/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toHaveCount(1)
+        ->and($payments[0]['status'])->toBe('pending_verification');
+});
+
+test('deposit rows are never treated as incomplete card attempts', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    // Deposit rows run their own lifecycle (authorized / requires_action / ...)
+    // and must stay visible to the buyer.
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'deposit',
+        'amount'     => 300,
+        'reference'  => 'pi_test_deposit_row',
+        'status'     => 'requires_action',
+    ]);
+
+    $payments = $this->actingAs($buyer)
+        ->getJson("/api/v1/my/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toHaveCount(1)
+        ->and($payments[0]['method'])->toBe('deposit');
+});
+
+// ─── payment_intent.canceled webhook ─────────────────────────────────────────
+
+test('webhook marks an abandoned card attempt cancelled', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    $payment = InvoicePayment::create([
+        'invoice_id'           => $invoice->id,
+        'user_id'              => $buyer->id,
+        'method'               => 'stripe_card',
+        'amount'               => 5800,
+        'reference'            => 'pi_test_cancel_event',
+        'stripe_client_secret' => 'pi_test_cancel_event_secret',
+        'status'               => 'pending',
+    ]);
+
+    $webhook = makeStripeWebhookRequest(
+        ['id' => 'pi_test_cancel_event'],
+        'payment_intent.canceled'
+    );
+
+    $this->call('POST', '/api/v1/webhook/stripe', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => $webhook['header'],
+        'CONTENT_TYPE'          => 'application/json',
+    ], $webhook['payload'])->assertOk();
+
+    expect($payment->fresh()->status)->toBe('canceled')
+        ->and($payment->fresh()->stripe_client_secret)->toBeNull();
+});
+
+test('cancel webhook never downgrades an already completed payment', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    $payment = InvoicePayment::create([
+        'invoice_id'   => $invoice->id,
+        'user_id'      => $buyer->id,
+        'method'       => 'stripe_card',
+        'amount'       => 5800,
+        'reference'    => 'pi_test_cancel_after_paid',
+        'status'       => 'completed',
+        'processed_at' => now(),
+    ]);
+
+    $webhook = makeStripeWebhookRequest(
+        ['id' => 'pi_test_cancel_after_paid'],
+        'payment_intent.canceled'
+    );
+
+    $this->call('POST', '/api/v1/webhook/stripe', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => $webhook['header'],
+        'CONTENT_TYPE'          => 'application/json',
+    ], $webhook['payload'])->assertOk();
+
+    expect($payment->fresh()->status)->toBe('completed');
+});
+
+test('cancel webhook leaves deposit rows untouched', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    $payment = InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'deposit',
+        'amount'     => 300,
+        'reference'  => 'pi_test_deposit_cancel',
+        'status'     => 'authorized',
+    ]);
+
+    $webhook = makeStripeWebhookRequest(
+        ['id' => 'pi_test_deposit_cancel'],
+        'payment_intent.canceled'
+    );
+
+    $this->call('POST', '/api/v1/webhook/stripe', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => $webhook['header'],
+        'CONTENT_TYPE'          => 'application/json',
+    ], $webhook['payload'])->assertOk();
+
+    expect($payment->fresh()->status)->toBe('authorized');
+});
+
+test('failure webhook never downgrades an already completed payment', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    $payment = InvoicePayment::create([
+        'invoice_id'   => $invoice->id,
+        'user_id'      => $buyer->id,
+        'method'       => 'stripe_card',
+        'amount'       => 5800,
+        'reference'    => 'pi_test_fail_after_paid',
+        'status'       => 'completed',
+        'processed_at' => now(),
+    ]);
+
+    $webhook = makeStripeWebhookRequest(
+        ['id' => 'pi_test_fail_after_paid'],
+        'payment_intent.payment_failed'
+    );
+
+    $this->call('POST', '/api/v1/webhook/stripe', [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => $webhook['header'],
+        'CONTENT_TYPE'          => 'application/json',
+    ], $webhook['payload'])->assertOk();
+
+    expect($payment->fresh()->status)->toBe('completed');
+});
+
+test('an unsettled card attempt never credits the invoice balance', function () {
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_no_credit',
+        'status'     => 'canceled',
+    ]);
+
+    $invoice->recalculateBalance();
+
+    expect((float) $invoice->fresh()->amount_paid)->toBe(0.0)
+        ->and((float) $invoice->fresh()->balance_due)->toBe(5800.0);
+});
+
+// ─── Sweeper command ─────────────────────────────────────────────────────────
+
+test('sweeper is a no-op when stripe is not configured', function () {
+    config(['services.stripe.secret' => '']);
+
+    $this->artisan('payments:cancel-abandoned-intents')
+         ->assertExitCode(0);
+});
+
+test('sweeper ignores attempts younger than the age floor', function () {
+    config(['services.stripe.secret' => 'sk_test_fake']);
+
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    // Created just now — a buyer may still be mid-checkout, so it must be left
+    // alone. No Stripe call is made, so this stays offline and deterministic.
+    $payment = InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_too_young',
+        'status'     => 'pending',
+    ]);
+
+    $this->artisan('payments:cancel-abandoned-intents --minutes=60')
+         ->assertExitCode(0);
+
+    expect($payment->fresh()->status)->toBe('pending');
+});
+
+test('sweeper ignores already-settled and non-card rows', function () {
+    config(['services.stripe.secret' => 'sk_test_fake']);
+
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $invoice = $this->makeInvoice($buyer);
+
+    $rows = [
+        ['method' => 'stripe_card', 'status' => 'completed', 'reference' => 'pi_old_completed'],
+        ['method' => 'stripe_card', 'status' => 'failed',    'reference' => 'pi_old_failed'],
+        ['method' => 'stripe_card', 'status' => 'canceled',  'reference' => 'pi_old_canceled'],
+        ['method' => 'deposit',     'status' => 'pending',   'reference' => 'pi_old_deposit'],
+        ['method' => 'wire',        'status' => 'pending',   'reference' => 'wire_old'],
+    ];
+
+    foreach ($rows as $row) {
+        $p = InvoicePayment::create(array_merge([
+            'invoice_id' => $invoice->id,
+            'user_id'    => $buyer->id,
+            'amount'     => 100,
+        ], $row));
+        $p->forceFill(['created_at' => now()->subDay()])->save();
+    }
+
+    // Nothing matches the sweeper filter, so Stripe is never contacted.
+    $this->artisan('payments:cancel-abandoned-intents --minutes=60')
+         ->assertExitCode(0);
+
+    expect(InvoicePayment::where('reference', 'pi_old_deposit')->first()->status)->toBe('pending');
+});
+
+test('admin still sees the full unfiltered ledger including incomplete attempts', function () {
+    $buyer = User::factory()->create(['status' => 'active']);
+    $admin = User::factory()->create(['status' => 'active']);
+    $admin->assignRole('admin');
+
+    $invoice = $this->makeInvoice($buyer);
+
+    InvoicePayment::create([
+        'invoice_id' => $invoice->id,
+        'user_id'    => $buyer->id,
+        'method'     => 'stripe_card',
+        'amount'     => 5800,
+        'reference'  => 'pi_test_admin_sees_it',
+        'status'     => 'pending',
+    ]);
+
+    $payments = $this->actingAs($admin)
+        ->getJson("/api/v1/admin/invoices/{$invoice->id}")
+        ->assertOk()
+        ->json('data.payments');
+
+    expect($payments)->toHaveCount(1)
+        ->and($payments[0]['status'])->toBe('pending');
+});
