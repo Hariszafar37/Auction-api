@@ -17,6 +17,8 @@
     .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #475569; }
     .row:last-child { border-bottom: none; }
     .row.total { font-weight: bold; color: #0f172a; font-size: 16px; }
+    .row.credit { color: #16a34a; }
+    .row.balance { font-weight: bold; color: #b45309; font-size: 17px; }
     .row.due { color: #d97706; font-weight: bold; }
     .cta { text-align: center; margin: 28px 0; }
     .cta a { background: #f59e0b; color: #fff; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: bold; font-size: 15px; display: inline-block; }
@@ -24,6 +26,14 @@
   </style>
 </head>
 <body>
+  @php
+    // Display-only derivation. Every credit line is ledger-gated, so a deposit
+    // that failed / awaits SCA / was refunded simply does not render and the
+    // buyer still sees the full amount owed.
+    $depositPaid  = $invoice->depositCredited();
+    $otherPaid    = $invoice->otherPaymentsCredited();
+    $adjustments  = (float) $invoice->adjustments_total;
+  @endphp
   <div class="wrapper">
     <div class="header">
       <img src="{{ asset('images/colonial-logo.png') }}" alt="Colonial Auction Services, Inc." width="170" style="display:inline-block; background:#fff; padding:6px 12px; border-radius:8px; margin-bottom:10px;">
@@ -72,9 +82,43 @@
           <span>${{ number_format($invoice->tags_amount, 2) }}</span>
         </div>
         @endif
+        @if((float)$invoice->online_platform_fee_amount > 0)
+        <div class="row">
+          <span>Online Platform Fee</span>
+          <span>${{ number_format($invoice->online_platform_fee_amount, 2) }}</span>
+        </div>
+        @endif
+        @if((float)$invoice->storage_fee_amount > 0)
+        <div class="row">
+          <span>Storage ({{ $invoice->storage_days }} day{{ $invoice->storage_days !== 1 ? 's' : '' }})</span>
+          <span>${{ number_format($invoice->storage_fee_amount, 2) }}</span>
+        </div>
+        @endif
         <div class="row total">
-          <span>Total Due</span>
+          <span>Total</span>
           <span>${{ number_format($invoice->total_amount, 2) }}</span>
+        </div>
+        @if($adjustments != 0.0)
+        <div class="row{{ $adjustments < 0 ? ' credit' : '' }}">
+          <span>{{ $adjustments < 0 ? 'Adjustment / Credit' : 'Adjustment / Fee' }}</span>
+          <span>{{ $adjustments < 0 ? '-' : '+' }}${{ number_format(abs($adjustments), 2) }}</span>
+        </div>
+        @endif
+        @if($depositPaid > 0)
+        <div class="row credit">
+          <span>Deposit Paid</span>
+          <span>-${{ number_format($depositPaid, 2) }}</span>
+        </div>
+        @endif
+        @if($otherPaid > 0)
+        <div class="row credit">
+          <span>Amount Paid</span>
+          <span>-${{ number_format($otherPaid, 2) }}</span>
+        </div>
+        @endif
+        <div class="row balance">
+          <span>Remaining Balance</span>
+          <span>${{ number_format($invoice->remaining_balance, 2) }}</span>
         </div>
         @if($invoice->due_at)
         <div class="row due">
@@ -83,6 +127,13 @@
         </div>
         @endif
       </div>
+
+      @if($depositPaid > 0)
+      <p style="color:#475569;font-size:13px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 16px;">
+        ✅ Your ${{ number_format($depositPaid, 2) }} deposit has already been collected and credited
+        toward this invoice. Only the remaining balance shown above is still due.
+      </p>
+      @endif
 
       <div class="cta">
         <a href="{{ config('app.url') }}/my/invoices/{{ $invoice->id }}">View &amp; Pay Invoice</a>

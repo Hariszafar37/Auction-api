@@ -19,6 +19,8 @@
     .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #475569; }
     .row:last-child { border-bottom: none; }
     .row.total { font-weight: bold; color: #0f172a; font-size: 16px; }
+    .row.credit { color: #16a34a; }
+    .row.balance { font-weight: bold; color: #991b1b; font-size: 17px; }
     .storage-warning { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #92400e; margin-bottom: 24px; }
     .cta { text-align: center; margin: 28px 0; }
     .cta a { background: #dc2626; color: #fff; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block; }
@@ -42,6 +44,10 @@
 
       @php
         $daysPastDue = $invoice->due_at ? (int) $invoice->due_at->diffInDays(now()) : 0;
+        // Display-only derivation, ledger-gated — see invoice-created.blade.php.
+        $depositPaid = $invoice->depositCredited();
+        $otherPaid   = $invoice->otherPaymentsCredited();
+        $adjustments = (float) $invoice->adjustments_total;
       @endphp
 
       <div class="overdue-badge">
@@ -85,6 +91,12 @@
           <span>${{ number_format($invoice->tags_amount, 2) }}</span>
         </div>
         @endif
+        @if((float)$invoice->online_platform_fee_amount > 0)
+        <div class="row">
+          <span>Online Platform Fee</span>
+          <span>${{ number_format($invoice->online_platform_fee_amount, 2) }}</span>
+        </div>
+        @endif
         @if($invoice->storage_days > 0)
         <div class="row">
           <span>Storage ({{ $invoice->storage_days }} day{{ $invoice->storage_days !== 1 ? 's' : '' }})</span>
@@ -92,8 +104,30 @@
         </div>
         @endif
         <div class="row total">
-          <span>Total Owed</span>
-          <span>${{ number_format($invoice->balance_due, 2) }}</span>
+          <span>Total</span>
+          <span>${{ number_format($invoice->total_amount, 2) }}</span>
+        </div>
+        @if($adjustments != 0.0)
+        <div class="row{{ $adjustments < 0 ? ' credit' : '' }}">
+          <span>{{ $adjustments < 0 ? 'Adjustment / Credit' : 'Adjustment / Fee' }}</span>
+          <span>{{ $adjustments < 0 ? '-' : '+' }}${{ number_format(abs($adjustments), 2) }}</span>
+        </div>
+        @endif
+        @if($depositPaid > 0)
+        <div class="row credit">
+          <span>Deposit Paid</span>
+          <span>-${{ number_format($depositPaid, 2) }}</span>
+        </div>
+        @endif
+        @if($otherPaid > 0)
+        <div class="row credit">
+          <span>Amount Paid</span>
+          <span>-${{ number_format($otherPaid, 2) }}</span>
+        </div>
+        @endif
+        <div class="row balance">
+          <span>Remaining Balance</span>
+          <span>${{ number_format($invoice->remaining_balance, 2) }}</span>
         </div>
       </div>
 
@@ -103,7 +137,7 @@
       </div>
 
       <div class="cta">
-        <a href="{{ config('app.url') }}/my/invoices/{{ $invoice->id }}">Pay Now — ${{ number_format($invoice->balance_due, 2) }}</a>
+        <a href="{{ config('app.url') }}/my/invoices/{{ $invoice->id }}">Pay Now — ${{ number_format($invoice->remaining_balance, 2) }}</a>
       </div>
 
       <p style="color:#64748b;font-size:13px;text-align:center;">

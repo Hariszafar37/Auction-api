@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\InvoiceStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\PaymentTransactionType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -156,6 +157,39 @@ class Invoice extends Model
             ->whereIn('status', ['completed', 'verified'])
             ->whereIn('transaction_type', PaymentTransactionType::paymentSide())
             ->sum('amount');
+    }
+
+    /**
+     * The portion of creditedAmount() that came from the captured buyer deposit.
+     *
+     * Ledger-driven, never config-driven: deposit_amount is only what the fee
+     * engine *asked* for. A deposit that failed, still needs SCA, or was refunded
+     * when the invoice was voided has moved no money and must never be shown to
+     * the buyer as a credit. Gated on the same status/transaction_type pair as
+     * creditedAmount(), so the two can never disagree.
+     *
+     * Display-only helper — the balance itself is still driven by
+     * recalculateBalance(); this just lets a receipt itemise the deposit instead
+     * of lumping it into a single "Amount Paid" figure.
+     */
+    public function depositCredited(): float
+    {
+        return (float) $this->payments()
+            ->where('method', PaymentMethod::Deposit->value)
+            ->whereIn('status', ['completed', 'verified'])
+            ->whereIn('transaction_type', PaymentTransactionType::paymentSide())
+            ->sum('amount');
+    }
+
+    /**
+     * Everything credited that is *not* the deposit, so a receipt can show
+     * "Deposit Paid" and "Amount Paid" as two non-overlapping lines. Reads the
+     * cached amount_paid column (not the ledger) so it always reconciles with
+     * the balance the buyer is quoted.
+     */
+    public function otherPaymentsCredited(): float
+    {
+        return max(0.0, (float) $this->amount_paid - $this->depositCredited());
     }
 
     /**
