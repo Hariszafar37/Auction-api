@@ -122,19 +122,34 @@ class PaymentController extends Controller
         // sweeper already treats as cancellable, so no change is needed there.
         $idempotencyKey = 'invoice_pi_' . $invoice->id . '_' . (int) round($amount * 100) . '_' . $cardSource;
 
-        $existing = $invoice->payments()
+        if ($useSavedCard) {
+            // Bind the key to the exact card as well. If the buyer replaces their
+            // card on file, the next attempt must mint a NEW intent rather than
+            // replay one that still carries the old payment method.
+            $idempotencyKey .= '_' . substr(hash('sha256', $savedPaymentMethodId), 0, 12);
+        }
+
+        // Only the new-card path reuses a pending intent from the database.
+        //
+        // A saved-card intent has a specific payment_method baked into it, and
+        // Stripe.js confirms it without naming a card — so serving a stale one to a
+        // buyer who has since replaced their card on file would charge the OLD card
+        // while the form shows the new one. Matching on invoice + amount + 'saved'
+        // cannot detect that; the payment method is not stored on the row.
+        //
+        // Nothing is lost by skipping it: the payment-method-bound idempotency key
+        // above already makes Stripe replay the same intent for an unchanged card,
+        // and the reference-adoption below still prevents a duplicate ledger row.
+        // The new-card path keeps the fast path because confirmCardPayment names
+        // the card explicitly there, so a reused intent cannot charge the wrong one.
+        $existing = $useSavedCard ? null : $invoice->payments()
             ->where('method', 'stripe_card')
             ->where('status', 'pending')
             ->where('amount', $amount)
-            ->where(function ($q) use ($cardSource) {
-                $q->where('card_source', $cardSource);
-                // Rows written before card_source existed are all new-card intents.
-                // Matching them keeps in-flight attempts reusable across the deploy
-                // instead of orphaning them for the sweeper.
-                if ($cardSource === 'new') {
-                    $q->orWhereNull('card_source');
-                }
-            })
+            // Rows written before card_source existed are all new-card intents.
+            // Matching them keeps in-flight attempts reusable across the deploy
+            // instead of orphaning them for the sweeper.
+            ->where(fn ($q) => $q->where('card_source', 'new')->orWhereNull('card_source'))
             ->first();
 
         if ($existing && $existing->stripe_client_secret) {

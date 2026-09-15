@@ -219,7 +219,8 @@ test('saved-card and new-card attempts for the same amount use different idempot
     // so a shared key here would hard-fail the buyer's second attempt in production.
     expect($calls)->toHaveCount(2);
     expect($calls[0]['idempotencyKey'])->not->toBe($calls[1]['idempotencyKey']);
-    expect($calls[0]['idempotencyKey'])->toEndWith('_saved')
+    // The saved key also carries a fingerprint of the card it was built against.
+    expect($calls[0]['idempotencyKey'])->toContain('_saved_')
         ->and($calls[1]['idempotencyKey'])->toEndWith('_new');
 });
 
@@ -248,30 +249,52 @@ test('a pending saved-card intent is never handed to a new-card request', functi
     expect($calls)->toHaveCount(1);
 });
 
-test('a pending saved-card intent is reused by a second saved-card request', function () {
+test('repeating a saved-card request replays one intent and one ledger row', function () {
     $calls   = fakeStripe();
     $buyer   = User::factory()->create(['status' => 'active']);
     giveSavedCard($buyer);
     $invoice = $this->makeInvoice($buyer);
 
-    InvoicePayment::create([
-        'invoice_id'           => $invoice->id,
-        'user_id'              => $buyer->id,
-        'method'               => 'stripe_card',
-        'amount'               => 5800,
-        'reference'            => 'pi_existing_saved',
-        'stripe_client_secret' => 'pi_existing_saved_secret',
-        'card_source'          => 'saved',
-        'status'               => 'pending',
-    ]);
+    $first = $this->actingAs($buyer, 'sanctum')
+                  ->postJson("/api/v1/my/invoices/{$invoice->id}/payment-intent", ['use_saved_card' => true]);
 
+    $second = $this->actingAs($buyer, 'sanctum')
+                   ->postJson("/api/v1/my/invoices/{$invoice->id}/payment-intent", ['use_saved_card' => true]);
+
+    // The card has not changed, so the key is the same and Stripe hands back the
+    // same intent — which is adopted rather than duplicated.
+    expect($calls[0]['idempotencyKey'])->toBe($calls[1]['idempotencyKey']);
+    expect($first->json('data.client_secret'))->toBe($second->json('data.client_secret'));
+    expect(InvoicePayment::where('invoice_id', $invoice->id)->count())->toBe(1);
+});
+
+test('replacing the card on file never replays the intent built for the old card', function () {
+    $calls   = fakeStripe();
+    $buyer   = User::factory()->create(['status' => 'active']);
+    $billing = giveSavedCard($buyer);
+    $invoice = $this->makeInvoice($buyer);
+
+    // Buyer confirms with card A, then abandons it — the row stays 'pending'.
     $this->actingAs($buyer, 'sanctum')
          ->postJson("/api/v1/my/invoices/{$invoice->id}/payment-intent", ['use_saved_card' => true])
-         ->assertOk()
-         ->assertJsonPath('data.client_secret', 'pi_existing_saved_secret');
+         ->assertStatus(201);
 
-    // Reused from the database — Stripe was never called.
-    expect($calls)->toHaveCount(0);
+    $oldSecret = InvoicePayment::where('invoice_id', $invoice->id)->first()->stripe_client_secret;
+
+    // They then replace their card on file with card B and come back.
+    $billing->update(['stripe_payment_method_id' => 'pm_test_REPLACEMENT', 'card_last_four' => '1881']);
+
+    $res = $this->actingAs($buyer, 'sanctum')
+                ->postJson("/api/v1/my/invoices/{$invoice->id}/payment-intent", ['use_saved_card' => true])
+                ->assertStatus(201);
+
+    // The old intent carries card A's payment_method and is confirmed without
+    // naming a card, so replaying it would charge the card the buyer just
+    // replaced while the form advertises the new one.
+    expect($calls)->toHaveCount(2);
+    expect($calls[1]['paymentMethodId'])->toBe('pm_test_REPLACEMENT');
+    expect($calls[0]['idempotencyKey'])->not->toBe($calls[1]['idempotencyKey']);
+    expect($res->json('data.client_secret'))->not->toBe($oldSecret);
 });
 
 test('a legacy pending row with a null card_source is still reused by a new-card request', function () {
