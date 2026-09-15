@@ -21,6 +21,7 @@ class InvoicePayment extends Model
         'amount',
         'reference',
         'stripe_client_secret',
+        'card_source',
         'status',
         'notes',
         'processed_at',
