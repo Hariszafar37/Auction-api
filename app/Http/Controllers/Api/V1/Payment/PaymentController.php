@@ -13,10 +13,10 @@ use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\PaymentSetting;
 use App\Services\Payment\NonCardPaymentService;
+use App\Services\Payment\StripeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Stripe\StripeClient;
 
 class PaymentController extends Controller
 {
@@ -67,19 +67,74 @@ class PaymentController extends Controller
             }
         }
 
-        // The amount keys both the idempotency token and the reuse lookup, so a
-        // previously-created intent is only ever handed back when it is for exactly
-        // the amount now owed. This matters because AccrueStorageFees raises
-        // balance_due daily: reusing an intent by invoice alone (as the default path
-        // once did) could serve a buyer yesterday's intent and under-charge them.
+        // Card-on-file support is likewise opt-in. The saved card resolved here is
+        // always the INVOICE BUYER's — never the acting user's — so an admin
+        // raising an intent on a buyer's behalf can never attach their own card.
+        //
+        // The intent is built with the customer + payment method attached but is
+        // NOT confirmed here. The buyer is sitting in front of the browser, so
+        // Stripe.js confirms it on-session and handles any 3-D Secure challenge
+        // inline. That keeps the webhook the single source of truth for marking an
+        // invoice paid, exactly as before — an off-session charge would have had to
+        // credit the payment synchronously and break that invariant.
+        $request->validate(['use_saved_card' => ['sometimes', 'boolean']]);
+        $useSavedCard = $request->boolean('use_saved_card');
+
+        $savedCustomerId      = null;
+        $savedPaymentMethodId = null;
+
+        if ($useSavedCard) {
+            $invoice->loadMissing('buyer.billingInformation');
+            $buyer   = $invoice->buyer;
+            $billing = $buyer?->billingInformation;
+
+            if (! $buyer || ! $buyer->stripe_customer_id || ! $billing || ! $billing->hasValidCard()) {
+                return $this->error(
+                    'No usable card on file. Please enter your card details.',
+                    422,
+                    'no_saved_card'
+                );
+            }
+
+            $savedCustomerId      = $buyer->stripe_customer_id;
+            $savedPaymentMethodId = $billing->stripe_payment_method_id;
+        }
+
+        $cardSource = $useSavedCard ? 'saved' : 'new';
+
+        // The amount AND the card source key both the idempotency token and the
+        // reuse lookup, so a previously-created intent is only ever handed back when
+        // it is for exactly the amount now owed AND the card the buyer just chose.
+        //
+        // Amount matters because AccrueStorageFees raises balance_due daily: reusing
+        // an intent by invoice alone (as the default path once did) could serve a
+        // buyer yesterday's intent and under-charge them.
+        //
+        // Card source matters because the two intents are built from different
+        // parameters. Stripe rejects a replay of an idempotency key with changed
+        // parameters (400 idempotency_error), so without this suffix a buyer who
+        // tried one method and then the other for the same amount would hit a hard
+        // failure on the second attempt.
+        //
         // A pending intent for a superseded amount is simply not reused here; the
-        // payments:cancel-abandoned-intents sweeper retires it in Stripe.
-        $idempotencyKey = 'invoice_pi_' . $invoice->id . '_' . (int) round($amount * 100);
+        // payments:cancel-abandoned-intents sweeper retires it in Stripe. An
+        // unconfirmed saved-card intent sits at 'requires_confirmation', which that
+        // sweeper already treats as cancellable, so no change is needed there.
+        $idempotencyKey = 'invoice_pi_' . $invoice->id . '_' . (int) round($amount * 100) . '_' . $cardSource;
 
         $existing = $invoice->payments()
             ->where('method', 'stripe_card')
             ->where('status', 'pending')
             ->where('amount', $amount)
+            ->where(function ($q) use ($cardSource) {
+                $q->where('card_source', $cardSource);
+                // Rows written before card_source existed are all new-card intents.
+                // Matching them keeps in-flight attempts reusable across the deploy
+                // instead of orphaning them for the sweeper.
+                if ($cardSource === 'new') {
+                    $q->orWhereNull('card_source');
+                }
+            })
             ->first();
 
         if ($existing && $existing->stripe_client_secret) {
@@ -90,21 +145,23 @@ class PaymentController extends Controller
             ]);
         }
 
-        $stripe = new StripeClient(config('services.stripe.secret'));
-
-        // FIX 1: idempotency key prevents double-charge if this endpoint is called twice
-        $pi = $stripe->paymentIntents->create([
-            'amount'      => (int) round($amount * 100),
-            'currency'    => 'usd',
-            'metadata'    => [
+        // FIX 1: idempotency key prevents double-charge if this endpoint is called
+        // twice. Routed through StripeService so the gateway stays swappable for a
+        // fake in tests, per that service's contract.
+        $pi = app(StripeService::class)->createUnconfirmedPaymentIntent(
+            (int) round($amount * 100),
+            [
                 'invoice_id'     => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'buyer_id'       => $invoice->buyer_id,
+                'card_source'    => $cardSource,
             ],
-            'description' => "Invoice {$invoice->invoice_number}",
-        ], [
-            'idempotency_key' => $idempotencyKey,
-        ]);
+            $idempotencyKey,
+            "Invoice {$invoice->invoice_number}",
+            // Attaching the saved card lets Stripe.js confirm without re-collecting it.
+            $savedCustomerId,
+            $savedPaymentMethodId,
+        );
 
         // invoice_payments.reference is UNIQUE, and the idempotency key above means
         // Stripe can legitimately hand back a PaymentIntent we already have a row
@@ -125,6 +182,7 @@ class PaymentController extends Controller
                 $payment->update([
                     'amount'               => $amount,
                     'stripe_client_secret' => $pi->client_secret,
+                    'card_source'          => $cardSource,
                     'status'               => 'pending',
                 ]);
             }
@@ -136,6 +194,7 @@ class PaymentController extends Controller
                 'amount'               => $amount,
                 'reference'            => $pi->id,
                 'stripe_client_secret' => $pi->client_secret,
+                'card_source'          => $cardSource,
                 'status'               => 'pending',
             ]);
         }
