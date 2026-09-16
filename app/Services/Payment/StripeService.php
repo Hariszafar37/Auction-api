@@ -98,8 +98,11 @@ class StripeService
             ]);
         }
 
+        // Always key off the id Stripe returned, never the one we were handed:
+        // attaching a shared test token (pm_card_visa) mints a NEW pm_... and the
+        // token itself is not a valid default_payment_method.
         $this->client()->customers->update($customerId, [
-            'invoice_settings' => ['default_payment_method' => $paymentMethodId],
+            'invoice_settings' => ['default_payment_method' => $pm->id],
         ]);
 
         return $pm;
@@ -132,6 +135,45 @@ class StripeService
             'metadata'       => $metadata,
             'description'    => $description,
         ], [
+            'idempotency_key' => $idempotencyKey,
+        ]);
+    }
+
+    /**
+     * Create an UNCONFIRMED PaymentIntent for a buyer who is present in the
+     * browser, to be confirmed client-side by Stripe.js.
+     *
+     * Passing $customerId + $paymentMethodId attaches the buyer's saved card so
+     * the frontend can confirm without re-collecting it; omitting both leaves an
+     * anonymous intent that the CardElement supplies a card to. Either way the
+     * intent is NOT confirmed here — the buyer is on-session, so Stripe.js runs
+     * any 3-D Secure challenge inline and the webhook stays the single source of
+     * truth for marking an invoice paid.
+     *
+     * Contrast with chargeOffSession(), which confirms immediately for a buyer
+     * who is NOT present (the deposit flow).
+     */
+    public function createUnconfirmedPaymentIntent(
+        int $amountCents,
+        array $metadata,
+        string $idempotencyKey,
+        ?string $description = null,
+        ?string $customerId = null,
+        ?string $paymentMethodId = null,
+    ): PaymentIntent {
+        $params = [
+            'amount'      => $amountCents,
+            'currency'    => 'usd',
+            'metadata'    => $metadata,
+            'description' => $description,
+        ];
+
+        if ($customerId !== null && $paymentMethodId !== null) {
+            $params['customer']       = $customerId;
+            $params['payment_method'] = $paymentMethodId;
+        }
+
+        return $this->client()->paymentIntents->create($params, [
             'idempotency_key' => $idempotencyKey,
         ]);
     }
