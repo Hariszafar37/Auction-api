@@ -98,8 +98,11 @@ class StripeService
             ]);
         }
 
+        // Always key off the id Stripe returned, never the one we were handed:
+        // attaching a shared test token (pm_card_visa) mints a NEW pm_... and the
+        // token itself is not a valid default_payment_method.
         $this->client()->customers->update($customerId, [
-            'invoice_settings' => ['default_payment_method' => $paymentMethodId],
+            'invoice_settings' => ['default_payment_method' => $pm->id],
         ]);
 
         return $pm;
