@@ -83,9 +83,25 @@ class AuthController extends Controller
             return $this->error('Invalid verification link.', 400, 'invalid_link');
         }
 
+        $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
+        // A verification link is opened more than once far more often than it is
+        // opened once: mail security scanners (Safe Links, Proofpoint, antivirus
+        // clients) fetch every URL in an incoming message before the recipient
+        // ever sees it, and people click twice or open the mail on two devices.
+        // Consuming the link on the first GET therefore burned it for the very
+        // user it was sent to, who then landed on the frontend's "invalid or has
+        // expired" screen with no way forward — verified, so resend-verification
+        // was a no-op, and password-less, so login refused them.
+        //
+        // The link stays usable until a password actually exists. Re-opening it
+        // repeats the same redirect as the first open rather than diverting to a
+        // dead end; once the account has a password there is nothing left to do,
+        // so send them to sign in.
         if ($user->hasVerifiedEmail()) {
-            $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
-            return redirect("{$frontendUrl}/set-password?already_verified=1");
+            return $user->password_set_at
+                ? redirect("{$frontendUrl}/login?already_verified=1")
+                : redirect("{$frontendUrl}/set-password?email_verified=1&email=" . urlencode($user->email));
         }
 
         if ($user->markEmailAsVerified()) {
@@ -93,8 +109,6 @@ class AuthController extends Controller
         }
 
         $user->update(['status' => 'pending_password']);
-
-        $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
 
         return redirect("{$frontendUrl}/set-password?email_verified=1&email=" . urlencode($user->email));
     }
@@ -286,6 +300,25 @@ class AuthController extends Controller
             function (User $user, string $password) {
                 $user->forceFill(['password' => Hash::make($password)])
                      ->setRememberToken(Str::random(60));
+
+                // A reset also finishes signup for an account that never got past
+                // the set-password step. Without this the reset succeeded, said so,
+                // and login still answered "Please set your password" — the account
+                // kept status `pending_password` and a null `password_set_at`
+                // forever, with no route out of it from the UI.
+                //
+                // Verification is still a precondition: an account that never
+                // confirmed its address must not reach `pending_activation` by
+                // way of a reset link, which would turn the reset flow into a way
+                // around email verification. Such a user keeps its
+                // `pending_email_verification` status and login keeps refusing it.
+                if (! $user->password_set_at && $user->hasVerifiedEmail()) {
+                    $user->forceFill(array_merge(
+                        ['password_set_at' => now()],
+                        $user->isPendingPassword() ? ['status' => 'pending_activation'] : [],
+                    ));
+                }
+
                 $user->save();
                 event(new PasswordReset($user));
             }
