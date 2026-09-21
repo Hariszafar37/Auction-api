@@ -99,3 +99,44 @@ it('does not disclose that an email is already verified', function () {
 
     Notification::assertNothingSent();
 });
+
+it('keeps the verification link usable until a password is set', function () {
+    // Mail scanners open links before the recipient does. The second open used to
+    // redirect to /set-password?already_verified=1, which the frontend renders as
+    // "this link is invalid or has expired" — see the 2026-09-17 client report.
+    $user = makeUnverifiedUser();
+
+    $url = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1($user->email)]
+    );
+
+    $this->get($url)->assertRedirect();
+
+    $location = $this->get($url)->headers->get('location');
+
+    expect($location)->toContain('/set-password')
+        ->and($location)->toContain('email_verified=1')
+        ->and($location)->toContain(urlencode($user->email))
+        ->and($location)->not->toContain('already_verified');
+});
+
+it('sends an already-activated user to sign in instead of set-password', function () {
+    $user = User::factory()->create([
+        'email_verified_at' => now(),
+        'password_set_at'   => now(),
+        'status'            => 'pending_activation',
+    ]);
+    $user->assignRole('buyer');
+
+    $url = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1($user->email)]
+    );
+
+    expect($this->get($url)->headers->get('location'))
+        ->toContain('/login')
+        ->and($this->get($url)->headers->get('location'))->toContain('already_verified=1');
+});
