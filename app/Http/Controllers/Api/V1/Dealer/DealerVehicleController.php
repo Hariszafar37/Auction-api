@@ -169,6 +169,17 @@ class DealerVehicleController extends Controller
             return $this->error('Vehicle not found.', 404, 'not_found');
         }
 
+        // Government consignors enter and prepare inventory, but an admin
+        // decides which auction each vehicle goes into (Add Lot on the admin
+        // auction page). They set their reserve on the vehicle instead.
+        if ($user->isGovernment()) {
+            return $this->error(
+                'Your vehicles are placed into auctions by our team. Once your vehicle is ready, an admin will assign it to an auction.',
+                403,
+                'admin_assigns_auction'
+            );
+        }
+
         // Account must be active AND have seller intent — single source of truth.
         // Mirrors the gate used by store() and the media endpoints.
         if (! $user->canPerformSellerActions()) {

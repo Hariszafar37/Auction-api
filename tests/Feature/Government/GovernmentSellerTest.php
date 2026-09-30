@@ -243,6 +243,22 @@ it('still lets an admin list other sellers\' vehicles without a POA', function (
         ->assertCreated();
 });
 
+it('does not let a government account put its own vehicle into an auction', function () {
+    $gov = govSeller();
+    govApprovedPoa($gov);
+    $vehicle = govVehicle($gov);
+
+    $this->actingAs($gov, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
+            'auction_id'   => govAuction()->id,
+            'starting_bid' => 500,
+        ])
+        ->assertForbidden()
+        ->assertJsonPath('code', 'admin_assigns_auction');
+
+    expect($vehicle->fresh()->status)->toBe('available');
+});
+
 it('still requires a Power of Attorney from individual sellers', function () {
     $seller = User::factory()->create(['status' => 'active']);
     $seller->assignRole('seller');
