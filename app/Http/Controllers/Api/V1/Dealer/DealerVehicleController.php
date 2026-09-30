@@ -179,9 +179,8 @@ class DealerVehicleController extends Controller
             );
         }
 
-        // All seller-enabled accounts (individual, dealer, business) need an approved POA.
-        // Government consignors are exempt — see User::requiresPoaToSell().
-        if ($user->requiresPoaToSell() && ! $user->hasApprovedPoa()) {
+        // All seller-enabled accounts (individual, dealer, business) need an approved POA
+        if ($user->hasSellIntent() && ! $user->hasApprovedPoa()) {
             return $this->error(
                 'An approved Power of Attorney is required before submitting vehicles to auction.',
                 403,

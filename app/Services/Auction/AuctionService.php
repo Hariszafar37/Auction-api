@@ -296,10 +296,20 @@ class AuctionService
         $seller = $vehicle->seller()->with('dealerProfile')->first();
         $isAdmin = $requestingUser && $requestingUser->hasRole('admin');
 
+        // Government consignors never list their own vehicles — an admin does it
+        // for them — so the admin bypass below would otherwise skip their POA
+        // entirely. The POA is needed for title/DMV processing, so it is checked
+        // here for every caller, admin included. Keyed on vehicle_id so the
+        // admin's Add Lot form shows it against the vehicle picker.
+        if ($seller && $seller->isGovernment() && ! $seller->hasApprovedPoa()) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => ['This government seller needs an approved Power of Attorney before their vehicle can be listed.'],
+            ]);
+        }
+
         if (! $isAdmin) {
-            // POA check: all seller-enabled accounts (individual, dealer, business) need an approved POA.
-            // Government consignors are exempt — see User::requiresPoaToSell().
-            if ($seller && $seller->requiresPoaToSell()) {
+            // POA check: all seller-enabled accounts (individual, dealer, business) need an approved POA
+            if ($seller && $seller->hasSellIntent()) {
                 if (! $seller->hasApprovedPoa()) {
                     throw ValidationException::withMessages([
                         'poa' => ['An approved Power of Attorney is required before submitting a vehicle to auction.'],

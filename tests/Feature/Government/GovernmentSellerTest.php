@@ -176,22 +176,71 @@ it('rejects a VIN already used by another vehicle but accepts its own', function
         ->assertOk();
 });
 
-// ── Listing: POA exemption ───────────────────────────────────────────────────
+// ── Listing: POA required ────────────────────────────────────────────────────
 
-it('lets a government account submit to an auction without a Power of Attorney', function () {
+function govApprovedPoa(User $user): void
+{
+    \App\Models\PowerOfAttorney::create([
+        'user_id'             => $user->id,
+        'type'                => 'esign',
+        'status'              => 'approved',
+        'signer_printed_name' => 'Fleet Director',
+    ]);
+}
+
+function govAdmin(): User
+{
+    $admin = User::factory()->create(['status' => 'active']);
+    $admin->assignRole('admin');
+
+    return $admin;
+}
+
+it('refuses to list a government vehicle, even for an admin, until the POA is approved', function () {
     $gov     = govSeller();
     $vehicle = govVehicle($gov);
     $auction = govAuction();
 
-    $this->actingAs($gov, 'sanctum')
-        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/submit-to-auction", [
-            'auction_id'    => $auction->id,
+    $this->actingAs(govAdmin(), 'sanctum')
+        ->postJson("/api/v1/admin/auctions/{$auction->id}/lots", [
+            'vehicle_id'   => $vehicle->id,
+            'starting_bid' => 500,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['vehicle_id']);
+
+    expect($vehicle->fresh()->status)->toBe('available');
+});
+
+it('lets an admin list a government vehicle once the POA is approved', function () {
+    $gov = govSeller();
+    govApprovedPoa($gov);
+    $vehicle = govVehicle($gov);
+    $auction = govAuction();
+
+    $this->actingAs(govAdmin(), 'sanctum')
+        ->postJson("/api/v1/admin/auctions/{$auction->id}/lots", [
+            'vehicle_id'    => $vehicle->id,
             'starting_bid'  => 500,
             'reserve_price' => 3000,
         ])
         ->assertCreated();
 
     expect($vehicle->fresh()->status)->toBe('in_auction');
+});
+
+it('still lets an admin list other sellers\' vehicles without a POA', function () {
+    $seller = User::factory()->create(['status' => 'active']);
+    $seller->assignRole('seller');
+    $vehicle = govVehicle($seller);
+    $auction = govAuction();
+
+    $this->actingAs(govAdmin(), 'sanctum')
+        ->postJson("/api/v1/admin/auctions/{$auction->id}/lots", [
+            'vehicle_id'   => $vehicle->id,
+            'starting_bid' => 500,
+        ])
+        ->assertCreated();
 });
 
 it('still requires a Power of Attorney from individual sellers', function () {
@@ -376,18 +425,10 @@ it('never applies a fee profile to a non-government seller', function () {
 
 // ── Admin fee profile endpoints ──────────────────────────────────────────────
 
-function govFeeAdmin(): User
-{
-    $admin = User::factory()->create(['status' => 'active']);
-    $admin->assignRole('admin');
-
-    return $admin;
-}
-
 it('reports zero fees for a government account with no saved profile', function () {
     $gov = govSeller();
 
-    $this->actingAs(govFeeAdmin(), 'sanctum')
+    $this->actingAs(govAdmin(), 'sanctum')
         ->getJson("/api/v1/admin/government/{$gov->id}/fees")
         ->assertOk()
         ->assertJsonPath('data.is_configured', false)
@@ -397,7 +438,7 @@ it('reports zero fees for a government account with no saved profile', function 
 
 it('lets an admin save a government account\'s fees', function () {
     $gov   = govSeller();
-    $admin = govFeeAdmin();
+    $admin = govAdmin();
 
     $this->actingAs($admin, 'sanctum')
         ->putJson("/api/v1/admin/government/{$gov->id}/fees", [
@@ -419,7 +460,7 @@ it('lets an admin save a government account\'s fees', function () {
 it('zeroes the amount when commission is set to none', function () {
     $gov = govSeller();
 
-    $this->actingAs(govFeeAdmin(), 'sanctum')
+    $this->actingAs(govAdmin(), 'sanctum')
         ->putJson("/api/v1/admin/government/{$gov->id}/fees", [
             'registration_fee' => 0,
             'commission_type'  => 'none',
@@ -433,7 +474,7 @@ it('zeroes the amount when commission is set to none', function () {
 it('rejects a percentage commission above 100', function () {
     $gov = govSeller();
 
-    $this->actingAs(govFeeAdmin(), 'sanctum')
+    $this->actingAs(govAdmin(), 'sanctum')
         ->putJson("/api/v1/admin/government/{$gov->id}/fees", [
             'registration_fee' => 0,
             'commission_type'  => 'percent',
@@ -447,7 +488,7 @@ it('rejects a percentage commission above 100', function () {
 it('only manages fee profiles for government accounts', function () {
     $dealer = User::factory()->create(['status' => 'active', 'account_type' => 'dealer']);
 
-    $this->actingAs(govFeeAdmin(), 'sanctum')
+    $this->actingAs(govAdmin(), 'sanctum')
         ->getJson("/api/v1/admin/government/{$dealer->id}/fees")
         ->assertNotFound();
 });
@@ -463,7 +504,7 @@ it('keeps fee profile endpoints closed to non-admins', function () {
 it('does not let an admin swap a government account\'s role', function () {
     $gov = govSeller();
 
-    $this->actingAs(govFeeAdmin(), 'sanctum')
+    $this->actingAs(govAdmin(), 'sanctum')
         ->patchJson("/api/v1/admin/users/{$gov->id}/role", ['role' => 'buyer'])
         ->assertStatus(422)
         ->assertJsonPath('code', 'government_role_fixed');

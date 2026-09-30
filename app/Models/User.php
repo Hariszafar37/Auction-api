@@ -482,23 +482,14 @@ class User extends Authenticatable implements MustVerifyEmail
      * Government / charity / repo consignor account.
      *
      * These accounts are admin-created and act as a restricted seller: they
-     * manage only their own inventory, cannot bid, are exempt from the Power
-     * of Attorney gate, and settle on a per-account fee profile instead of the
-     * global seller fees.
+     * manage only their own inventory, cannot bid, never put a vehicle into an
+     * auction themselves (admin assigns it), and settle on a per-account fee
+     * profile instead of the global seller fees. Like every seller they need
+     * an approved Power of Attorney before anything is listed.
      */
     public function isGovernment(): bool
     {
         return $this->account_type === 'government';
-    }
-
-    /**
-     * Whether an approved Power of Attorney must be on file before this account
-     * may put a vehicle into an auction. Every seller needs one except
-     * government consignors, who are admin-vetted entities.
-     */
-    public function requiresPoaToSell(): bool
-    {
-        return $this->hasSellIntent() && ! $this->isGovernment();
     }
 
     /**
