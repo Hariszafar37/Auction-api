@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Admin\AdminVehicleResource;
 use App\Http\Resources\Auction\AuctionLotResource;
 use App\Models\Auction;
+use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\Auction\AuctionService;
 use Illuminate\Http\JsonResponse;
@@ -77,7 +78,7 @@ class DealerVehicleController extends Controller
             $request->merge(['condition_light' => \App\Support\ConditionLight::normalize($request->input('condition_light'))]);
         }
 
-        $data = $request->validate($this->vehicleRules());
+        $data = $request->validate($this->vehicleRules(null, $user));
 
         // Ownership is always the authenticated dealer — never trust a client-supplied seller_id
         $data['seller_id'] = $request->user()->id;
@@ -144,7 +145,7 @@ class DealerVehicleController extends Controller
 
         $rules = array_map(
             fn (array $rule) => ['sometimes', ...$rule],
-            $this->vehicleRules($vehicle),
+            $this->vehicleRules($vehicle, $user),
         );
 
         $vehicle->update($request->validate($rules));
@@ -224,10 +225,15 @@ class DealerVehicleController extends Controller
      * Validation rules for the vehicle fields a seller may enter. Shared by
      * store() and update() so the two can never drift apart; update() makes
      * every rule optional via sometimes().
+     *
+     * Only government consignors may set a reserve on the vehicle: they cannot
+     * list it themselves, so this is where they state it for the admin. Other
+     * sellers set the reserve when they submit to an auction, so for them the
+     * field is simply not accepted (validate() drops unlisted keys).
      */
-    private function vehicleRules(?Vehicle $ignore = null): array
+    private function vehicleRules(?Vehicle $ignore, User $seller): array
     {
-        return [
+        $rules = [
             'vin'             => ['required', 'string', 'size:17', Rule::unique('vehicles', 'vin')->ignore($ignore?->id)],
             'asset_number'    => ['nullable', 'string', 'max:100'],
             'year'            => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 1)],
@@ -253,5 +259,11 @@ class DealerVehicleController extends Controller
             'has_title'            => ['boolean'],
             'title_state'          => ['nullable', 'string', 'max:5'],
         ];
+
+        if ($seller->isGovernment()) {
+            $rules['reserve_price'] = ['nullable', 'integer', 'min:0'];
+        }
+
+        return $rules;
     }
 }

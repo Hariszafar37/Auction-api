@@ -50,6 +50,9 @@ class AdminVehicleResource extends JsonResource
                 'name' => $this->titleReceivedBy->name,
             ] : null),
             'status'           => $this->status,
+            // Private seller reserve (government consignors). This resource is
+            // only returned to admins and to the vehicle's owner.
+            'reserve_price'    => $this->reserve_price,
             'created_at'       => $this->safeIso($this->created_at),
             'seller'           => $this->whenLoaded('seller', fn () => [
                 'id'    => $this->seller->id,

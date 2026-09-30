@@ -101,6 +101,40 @@ it('lets a government account add a vehicle it owns', function () {
     expect(Vehicle::where('seller_id', $gov->id)->count())->toBe(1);
 });
 
+it('lets a government account set its reserve on the vehicle before listing', function () {
+    $gov = govSeller();
+
+    $id = $this->actingAs($gov, 'sanctum')
+        ->postJson('/api/v1/my/vehicles', govVehiclePayload(['reserve_price' => 4200]))
+        ->assertCreated()
+        ->assertJsonPath('data.reserve_price', 4200)
+        ->json('data.id');
+
+    $this->actingAs($gov, 'sanctum')
+        ->patchJson("/api/v1/my/vehicles/{$id}", ['reserve_price' => null])
+        ->assertOk()
+        ->assertJsonPath('data.reserve_price', null);
+});
+
+it('ignores a vehicle reserve sent by other sellers', function () {
+    $dealer = User::factory()->create(['status' => 'active', 'account_type' => 'dealer']);
+    $dealer->assignRole('dealer');
+
+    $this->actingAs($dealer, 'sanctum')
+        ->postJson('/api/v1/my/vehicles', govVehiclePayload(['reserve_price' => 4200]))
+        ->assertCreated()
+        ->assertJsonPath('data.reserve_price', null);
+});
+
+it('keeps the vehicle reserve out of the public inventory', function () {
+    $vehicle = govVehicle(govSeller(), ['reserve_price' => 4200]);
+
+    $response = $this->getJson("/api/v1/vehicles/{$vehicle->id}")->assertOk();
+
+    expect($response->json('data'))->not->toHaveKey('reserve_price')
+        ->and(json_encode($response->json()))->not->toContain('4200');
+});
+
 it('lists only the government account\'s own vehicles', function () {
     $gov   = govSeller();
     $other = govSeller();
