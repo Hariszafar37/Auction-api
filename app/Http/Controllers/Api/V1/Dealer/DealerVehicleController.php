@@ -10,6 +10,7 @@ use App\Models\Vehicle;
 use App\Services\Auction\AuctionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class DealerVehicleController extends Controller
@@ -76,32 +77,7 @@ class DealerVehicleController extends Controller
             $request->merge(['condition_light' => \App\Support\ConditionLight::normalize($request->input('condition_light'))]);
         }
 
-        $data = $request->validate([
-            'vin'             => ['required', 'string', 'size:17', 'unique:vehicles,vin'],
-            'asset_number'    => ['nullable', 'string', 'max:100'],
-            'year'            => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 1)],
-            'make'            => ['required', 'string', 'max:50'],
-            'model'           => ['required', 'string', 'max:50'],
-            'trim'            => ['nullable', 'string', 'max:50'],
-            'exterior_color'  => ['nullable', 'string', 'max:50'],
-            'interior_color'  => ['nullable', 'string', 'max:50'],
-            'interior_seating_type' => ['nullable', 'string', 'max:50'],
-            'mileage'         => ['nullable', 'integer', 'min:0'],
-            'odometer_status' => ['nullable', 'in:' . implode(',', Vehicle::ODOMETER_STATUSES)],
-            'number_of_keys'  => ['nullable', 'integer', 'min:0', 'max:50'],
-            'number_of_fobs'  => ['nullable', 'integer', 'min:0', 'max:50'],
-            'body_type'       => ['required', 'in:car,truck,suv,motorcycle,boat,atv,fleet,other'],
-            'transmission'    => ['nullable', 'string', 'max:30'],
-            'engine'          => ['nullable', 'string', 'max:50'],
-            'fuel_type'       => ['nullable', 'string', 'max:30'],
-            'drivetrain'      => ['nullable', 'string', 'max:30'],
-            'condition_light'      => ['required', 'in:green,yellow,red'],
-            'condition_notes'      => ['nullable', 'string', 'max:1000'],
-            'condition_report_url' => ['required', 'url', 'max:2048'],
-            'additional_info'      => ['nullable', 'string'],
-            'has_title'            => ['boolean'],
-            'title_state'          => ['nullable', 'string', 'max:5'],
-        ]);
+        $data = $request->validate($this->vehicleRules());
 
         // Ownership is always the authenticated dealer — never trust a client-supplied seller_id
         $data['seller_id'] = $request->user()->id;
@@ -130,6 +106,56 @@ class DealerVehicleController extends Controller
     }
 
     /**
+     * PATCH /api/v1/my/vehicles/{vehicle}
+     * Government consignors edit a vehicle they entered (route is role:government).
+     *
+     * Editing closes once the vehicle is placed into an auction: only an
+     * `available` vehicle can change. After that, the reserve is the one thing
+     * the seller still controls, via PATCH /my/lots/{lot}/reserve, until the
+     * lot opens.
+     */
+    public function update(Request $request, Vehicle $vehicle): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($vehicle->seller_id !== $user->id) {
+            return $this->error('Vehicle not found.', 404, 'not_found');
+        }
+
+        if (! $user->canPerformSellerActions()) {
+            return $this->error(
+                'Your account must be approved and active before performing seller actions.',
+                403,
+                'seller_inactive'
+            );
+        }
+
+        if (! $vehicle->isAvailable()) {
+            return $this->error(
+                'This vehicle can no longer be edited because it has been placed in an auction.',
+                422,
+                'vehicle_locked'
+            );
+        }
+
+        if ($request->has('condition_light')) {
+            $request->merge(['condition_light' => \App\Support\ConditionLight::normalize($request->input('condition_light'))]);
+        }
+
+        $rules = array_map(
+            fn (array $rule) => ['sometimes', ...$rule],
+            $this->vehicleRules($vehicle),
+        );
+
+        $vehicle->update($request->validate($rules));
+
+        return $this->success(
+            new AdminVehicleResource($vehicle->fresh()->load('media')),
+            'Vehicle updated successfully.',
+        );
+    }
+
+    /**
      * POST /api/v1/my/vehicles/{vehicle}/submit-to-auction
      * Dealer submits an owned, available vehicle to a draft or scheduled auction.
      * Creates an AuctionLot via AuctionService::addLot() — ownership enforced here,
@@ -153,8 +179,9 @@ class DealerVehicleController extends Controller
             );
         }
 
-        // All seller-enabled accounts (individual, dealer, business) need an approved POA
-        if ($user->hasSellIntent() && ! $user->hasApprovedPoa()) {
+        // All seller-enabled accounts (individual, dealer, business) need an approved POA.
+        // Government consignors are exempt — see User::requiresPoaToSell().
+        if ($user->requiresPoaToSell() && ! $user->hasApprovedPoa()) {
             return $this->error(
                 'An approved Power of Attorney is required before submitting vehicles to auction.',
                 403,
@@ -181,5 +208,40 @@ class DealerVehicleController extends Controller
             'Vehicle submitted to auction successfully.',
             201,
         );
+    }
+
+    /**
+     * Validation rules for the vehicle fields a seller may enter. Shared by
+     * store() and update() so the two can never drift apart; update() makes
+     * every rule optional via sometimes().
+     */
+    private function vehicleRules(?Vehicle $ignore = null): array
+    {
+        return [
+            'vin'             => ['required', 'string', 'size:17', Rule::unique('vehicles', 'vin')->ignore($ignore?->id)],
+            'asset_number'    => ['nullable', 'string', 'max:100'],
+            'year'            => ['required', 'integer', 'min:1900', 'max:' . (date('Y') + 1)],
+            'make'            => ['required', 'string', 'max:50'],
+            'model'           => ['required', 'string', 'max:50'],
+            'trim'            => ['nullable', 'string', 'max:50'],
+            'exterior_color'  => ['nullable', 'string', 'max:50'],
+            'interior_color'  => ['nullable', 'string', 'max:50'],
+            'interior_seating_type' => ['nullable', 'string', 'max:50'],
+            'mileage'         => ['nullable', 'integer', 'min:0'],
+            'odometer_status' => ['nullable', 'in:' . implode(',', Vehicle::ODOMETER_STATUSES)],
+            'number_of_keys'  => ['nullable', 'integer', 'min:0', 'max:50'],
+            'number_of_fobs'  => ['nullable', 'integer', 'min:0', 'max:50'],
+            'body_type'       => ['required', 'in:car,truck,suv,motorcycle,boat,atv,fleet,other'],
+            'transmission'    => ['nullable', 'string', 'max:30'],
+            'engine'          => ['nullable', 'string', 'max:50'],
+            'fuel_type'       => ['nullable', 'string', 'max:30'],
+            'drivetrain'      => ['nullable', 'string', 'max:30'],
+            'condition_light'      => ['required', 'in:green,yellow,red'],
+            'condition_notes'      => ['nullable', 'string', 'max:1000'],
+            'condition_report_url' => ['required', 'url', 'max:2048'],
+            'additional_info'      => ['nullable', 'string'],
+            'has_title'            => ['boolean'],
+            'title_state'          => ['nullable', 'string', 'max:5'],
+        ];
     }
 }

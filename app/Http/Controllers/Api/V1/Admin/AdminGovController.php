@@ -6,7 +6,9 @@ use App\Events\Account\AccountApproved;
 use App\Events\Account\AccountRejected;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CreateGovProfileRequest;
+use App\Http\Requests\Admin\UpdateGovFeeProfileRequest;
 use App\Models\GovProfile;
+use App\Models\SellerFeeProfile;
 use App\Models\User;
 use App\Notifications\GovAccountInvite;
 use App\Services\Approval\ApprovalService;
@@ -34,9 +36,13 @@ class AdminGovController extends Controller
                 'account_type' => 'government',
                 'status'       => 'pending_email_verification',
                 'password'     => null,
+                // A government consignor sells; it does not bid.
+                'bidding_enabled' => false,
             ]);
 
-            $user->assignRole('buyer');
+            // Restricted seller — own inventory, own results, no bidding. See
+            // the `government` role in RolePermissionSeeder.
+            $user->assignRole('government');
 
             $token = Str::random(64);
 
@@ -241,6 +247,65 @@ class AdminGovController extends Controller
 
         $user->load('govProfile');
         return $this->success($this->formatGovUser($user), 'Government account rejected.');
+    }
+
+    /**
+     * GET /api/v1/admin/government/{user}/fees
+     *
+     * The seller fees this government account settles on. An account with no
+     * saved terms settles at zero (`is_configured: false`) — never on the
+     * standard seller fees.
+     */
+    public function feeProfile(User $user): JsonResponse
+    {
+        if (! $user->isGovernment()) {
+            return $this->error('User is not a government account.', 404, 'not_found');
+        }
+
+        return $this->success($this->formatFeeProfile($user->sellerFeeProfile));
+    }
+
+    /**
+     * PUT /api/v1/admin/government/{user}/fees
+     *
+     * Save this account's agreed seller fees. Applies to settlements created or
+     * finalized from now on; settlements already finalized keep the fees they
+     * were calculated with.
+     */
+    public function updateFeeProfile(UpdateGovFeeProfileRequest $request, User $user): JsonResponse
+    {
+        if (! $user->isGovernment()) {
+            return $this->error('User is not a government account.', 404, 'not_found');
+        }
+
+        $data = $request->validated();
+
+        // "No commission" carries no amount, whatever the form sent.
+        if ($data['commission_type'] === SellerFeeProfile::COMMISSION_NONE) {
+            $data['commission_value'] = 0;
+        }
+
+        $profile = SellerFeeProfile::updateOrCreate(
+            ['user_id' => $user->id],
+            [...$data, 'updated_by' => $request->user()->id],
+        );
+
+        return $this->success($this->formatFeeProfile($profile->fresh()), 'Seller fees saved.');
+    }
+
+    private function formatFeeProfile(?SellerFeeProfile $profile): array
+    {
+        $effective = $profile ?? SellerFeeProfile::noFees();
+
+        return [
+            'is_configured'    => $profile !== null,
+            'registration_fee' => (float) $effective->registration_fee,
+            'commission_type'  => $effective->commission_type,
+            'commission_value' => (float) $effective->commission_value,
+            'no_sale_fee'      => (float) $effective->no_sale_fee,
+            'notes'            => $effective->notes,
+            'updated_at'       => $profile?->updated_at?->toIso8601String(),
+        ];
     }
 
     private function formatGovUser(\App\Models\User $user): array

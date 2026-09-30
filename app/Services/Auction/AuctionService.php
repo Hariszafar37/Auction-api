@@ -297,8 +297,9 @@ class AuctionService
         $isAdmin = $requestingUser && $requestingUser->hasRole('admin');
 
         if (! $isAdmin) {
-            // POA check: all seller-enabled accounts (individual, dealer, business) need an approved POA
-            if ($seller && $seller->hasSellIntent()) {
+            // POA check: all seller-enabled accounts (individual, dealer, business) need an approved POA.
+            // Government consignors are exempt — see User::requiresPoaToSell().
+            if ($seller && $seller->requiresPoaToSell()) {
                 if (! $seller->hasApprovedPoa()) {
                     throw ValidationException::withMessages([
                         'poa' => ['An approved Power of Attorney is required before submitting a vehicle to auction.'],
@@ -420,6 +421,28 @@ class AuctionService
         }
 
         return $lot->fresh(['vehicle', 'auction']);
+    }
+
+    /**
+     * Seller-side reserve change. Follows the same freeze rule as updateLot():
+     * the reserve can only move while the lot is still pending — once bidding
+     * can begin it is locked. Null clears the reserve (sell to the highest bid).
+     */
+    public function updateReserve(AuctionLot $lot, ?int $reservePrice): AuctionLot
+    {
+        return DB::transaction(function () use ($lot, $reservePrice): AuctionLot {
+            $locked = AuctionLot::whereKey($lot->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== LotStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'reserve_price' => ['The reserve can only be changed before the lot opens for bidding.'],
+                ]);
+            }
+
+            $locked->update(['reserve_price' => $reservePrice]);
+
+            return $locked->fresh(['vehicle', 'auction']);
+        });
     }
 
     public function removeLot(AuctionLot $lot): void
