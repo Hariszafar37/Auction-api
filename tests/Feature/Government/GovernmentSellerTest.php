@@ -135,6 +135,28 @@ it('keeps the vehicle reserve out of the public inventory', function () {
         ->and(json_encode($response->json()))->not->toContain('4200');
 });
 
+it('lets a government account upload photos to its own vehicle, even before a POA', function () {
+    \Illuminate\Support\Facades\Storage::fake('public');
+    $gov     = govSeller();
+    $vehicle = govVehicle($gov);
+
+    $this->actingAs($gov, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$vehicle->id}/media", [
+            'files' => [\Illuminate\Http\UploadedFile::fake()->image('front.jpg', 400, 300)],
+        ])
+        ->assertCreated();
+
+    expect($vehicle->fresh()->getMedia('images'))->toHaveCount(1);
+
+    // Another seller's vehicle stays out of reach.
+    $foreign = govVehicle(govSeller());
+    $this->actingAs($gov, 'sanctum')
+        ->postJson("/api/v1/my/vehicles/{$foreign->id}/media", [
+            'files' => [\Illuminate\Http\UploadedFile::fake()->image('x.jpg')],
+        ])
+        ->assertNotFound();
+});
+
 it('lists only the government account\'s own vehicles', function () {
     $gov   = govSeller();
     $other = govSeller();
@@ -208,6 +230,29 @@ it('rejects a VIN already used by another vehicle but accepts its own', function
     $this->actingAs($gov, 'sanctum')
         ->patchJson("/api/v1/my/vehicles/{$vehicle->id}", ['vin' => $vehicle->vin])
         ->assertOk();
+});
+
+it('still lets an admin change a government vehicle and its lot after the cutoff', function () {
+    $gov     = govSeller();
+    $vehicle = govVehicle($gov, ['status' => 'in_auction']);
+    $lot     = govLot($vehicle);
+    $admin   = govAdmin();
+
+    // The government user is locked out once the vehicle is listed...
+    $this->actingAs($gov, 'sanctum')
+        ->patchJson("/api/v1/my/vehicles/{$vehicle->id}", ['mileage' => 1])
+        ->assertStatus(422);
+
+    // ...but the admin can still correct the vehicle and the lot's reserve.
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/vehicles/{$vehicle->id}", ['mileage' => 77000])
+        ->assertOk();
+    $this->actingAs($admin, 'sanctum')
+        ->patchJson("/api/v1/admin/auctions/{$lot->auction_id}/lots/{$lot->id}", ['reserve_price' => 5500])
+        ->assertOk();
+
+    expect($vehicle->fresh()->mileage)->toBe(77000)
+        ->and($lot->fresh()->reserve_price)->toBe(5500);
 });
 
 // ── Listing: POA required ────────────────────────────────────────────────────
@@ -457,6 +502,7 @@ it('applies flat commission, registration and no-sale fees from the profile', fu
 
     $unsold = govSettle($gov, null);
     expect((float) $unsold->no_sale_fee)->toBe(40.0)
+        ->and((float) $unsold->commission_amount)->toBe(0.0) // commission only when sold
         ->and((float) $unsold->net_proceeds)->toBe(-65.0);
 });
 
