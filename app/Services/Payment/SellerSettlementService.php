@@ -5,6 +5,7 @@ namespace App\Services\Payment;
 use App\Enums\SellerSettlementStatus;
 use App\Models\AuctionLot;
 use App\Models\PaymentSetting;
+use App\Models\SellerFeeProfile;
 use App\Models\SellerSettlement;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +23,9 @@ use Illuminate\Validation\ValidationException;
  *   3. markReadyForRelease() → issueCheck() → markPaid() — admin check workflow.
  *
  * Every write is idempotent, so re-running generation never duplicates a fee.
+ *
+ * Fees come from the global PaymentSetting, except for government consignors,
+ * who settle on their own agreed terms — see feeProfileFor().
  */
 class SellerSettlementService
 {
@@ -41,8 +45,13 @@ class SellerSettlementService
         }
 
         $settings = PaymentSetting::current();
+        $profile  = $this->feeProfileFor($sellerId);
 
-        return DB::transaction(function () use ($lot, $sellerId, $settings) {
+        $registrationFee = $profile
+            ? $profile->registration_fee
+            : $settings->seller_registration_fee;
+
+        return DB::transaction(function () use ($lot, $sellerId, $registrationFee) {
             $existing = SellerSettlement::where('lot_id', $lot->id)->lockForUpdate()->first();
             if ($existing) {
                 return $existing;
@@ -55,7 +64,7 @@ class SellerSettlementService
                 'seller_id'         => $sellerId,
                 'vehicle_id'        => $lot->vehicle_id,
                 'outcome'           => null,
-                'registration_fee'  => $settings->seller_registration_fee,
+                'registration_fee'  => $registrationFee,
                 'net_proceeds'      => 0,
                 'status'            => SellerSettlementStatus::Pending,
             ]);
@@ -77,13 +86,17 @@ class SellerSettlementService
         }
 
         $settings   = PaymentSetting::current();
+        $profile    = $this->feeProfileFor($settlement->seller_id);
         $salePrice  = (int) $lot->sold_price;
-        $commission = $this->commissionFor($salePrice, $settings);
+        $commission = $profile
+            ? $profile->commissionFor($salePrice)
+            : $this->commissionFor($salePrice, $settings);
+        $snapshot   = $this->snapshotFor($profile, $settings);
 
         $lot->loadMissing('auction');
         $releaseDate = $this->releaseDateFor($lot, $settings);
 
-        return DB::transaction(function () use ($settlement, $salePrice, $commission, $releaseDate, $settings) {
+        return DB::transaction(function () use ($settlement, $salePrice, $commission, $releaseDate, $snapshot) {
             $regFee = (float) $settlement->registration_fee;
             $net    = round($salePrice - $commission - $regFee + (float) $settlement->adjustments_total, 2);
 
@@ -95,7 +108,7 @@ class SellerSettlementService
                 'net_proceeds'      => $net,
                 'release_date'      => $releaseDate,
                 'status'            => SellerSettlementStatus::Pending,
-                'fee_snapshot'      => $this->snapshot($settings),
+                'fee_snapshot'      => $snapshot,
             ]);
 
             return $settlement->fresh();
@@ -118,9 +131,13 @@ class SellerSettlementService
         }
 
         $settings  = PaymentSetting::current();
-        $noSaleFee = (float) $settings->seller_no_sale_fee;
+        $profile   = $this->feeProfileFor($settlement->seller_id);
+        $noSaleFee = $profile
+            ? (float) $profile->no_sale_fee
+            : (float) $settings->seller_no_sale_fee;
+        $snapshot  = $this->snapshotFor($profile, $settings);
 
-        return DB::transaction(function () use ($settlement, $noSaleFee, $settings) {
+        return DB::transaction(function () use ($settlement, $noSaleFee, $snapshot) {
             $regFee = (float) $settlement->registration_fee;
             $net    = round(-1 * ($regFee + $noSaleFee) + (float) $settlement->adjustments_total, 2);
 
@@ -131,7 +148,7 @@ class SellerSettlementService
                 'no_sale_fee'       => $noSaleFee,
                 'net_proceeds'      => $net,
                 'status'            => SellerSettlementStatus::NoSale,
-                'fee_snapshot'      => $this->snapshot($settings),
+                'fee_snapshot'      => $snapshot,
             ]);
 
             return $settlement->fresh();
@@ -322,6 +339,36 @@ class SellerSettlementService
         return \Illuminate\Support\Carbon::parse($auctionDate)
             ->addDays((int) $settings->seller_release_days)
             ->startOfDay();
+    }
+
+    /**
+     * The per-account fee terms a seller settles on, or null to use the global
+     * seller fees in PaymentSetting.
+     *
+     * Only government consignors have per-account terms. One with no saved
+     * profile settles at zero: government accounts must never fall back to the
+     * standard seller fees. Every other account returns null, so its fees are
+     * exactly the global ones.
+     */
+    public function feeProfileFor(int $sellerId): ?SellerFeeProfile
+    {
+        $seller = User::with('sellerFeeProfile')->find($sellerId);
+
+        if (! $seller?->isGovernment()) {
+            return null;
+        }
+
+        return $seller->sellerFeeProfile ?? SellerFeeProfile::noFees();
+    }
+
+    private function snapshotFor(?SellerFeeProfile $profile, PaymentSetting $settings): array
+    {
+        if (! $profile) {
+            return $this->snapshot($settings);
+        }
+
+        // Release timing is platform-wide; only the fees are per account.
+        return $profile->snapshot() + ['release_days' => (int) $settings->seller_release_days];
     }
 
     private function snapshot(PaymentSetting $settings): array
