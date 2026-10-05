@@ -45,6 +45,9 @@ class Vehicle extends Model implements HasMedia
         'additional_info',
         'has_title',
         'title_state',
+        // Government consignors' requested reserve, set before listing. The
+        // lot's reserve_price is the one the auction uses.
+        'reserve_price',
         'status',
         'title_received',
         'title_received_at',
@@ -59,6 +62,7 @@ class Vehicle extends Model implements HasMedia
         'year'              => 'integer',
         'number_of_keys'    => 'integer',
         'number_of_fobs'    => 'integer',
+        'reserve_price'     => 'integer',
     ];
 
     /**

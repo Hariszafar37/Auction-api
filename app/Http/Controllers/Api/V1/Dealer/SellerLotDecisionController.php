@@ -8,6 +8,7 @@ use App\Http\Resources\Auction\BidResource;
 use App\Http\Resources\Dealer\DealerLotResource;
 use App\Models\AuctionLot;
 use App\Services\Auction\AuctionLotService;
+use App\Services\Auction\AuctionService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -92,6 +93,39 @@ class SellerLotDecisionController extends Controller
             fn () => $this->lotService->rejectIfSale($lot, $request->user()),
             'Bid rejected.',
         );
+    }
+
+    /**
+     * PATCH /api/v1/my/lots/{lot}/reserve
+     * Government consignors set or change the reserve on a lot they own
+     * (route is role:government). Allowed only while the lot is pending — see
+     * AuctionService::updateReserve(). Send null to remove the reserve.
+     */
+    public function updateReserve(Request $request, AuctionLot $lot, AuctionService $auctions): JsonResponse
+    {
+        if (! $this->owns($request, $lot)) {
+            return $this->error('You do not own the vehicle for this lot.', 403, 'forbidden');
+        }
+
+        if (! $request->user()->canPerformSellerActions()) {
+            return $this->error(
+                'Your account must be approved and active before performing seller actions.',
+                403,
+                'seller_inactive'
+            );
+        }
+
+        $data = $request->validate([
+            'reserve_price' => ['present', 'nullable', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $lot = $auctions->updateReserve($lot, $data['reserve_price']);
+        } catch (ValidationException $e) {
+            return $this->error($e->getMessage(), 422, 'reserve_locked', $e->errors());
+        }
+
+        return $this->success(new DealerLotResource($lot), 'Reserve updated.');
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────────
