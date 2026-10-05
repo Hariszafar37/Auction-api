@@ -340,6 +340,17 @@ class AdminUserController extends Controller
             return $this->error('You cannot change your own role.', 422, 'self_demotion');
         }
 
+        // A government consignor's role follows its account type. Swapping it
+        // here would silently turn the account into a buyer (or strip its
+        // selling access), so it is fixed.
+        if ($user->isGovernment()) {
+            return $this->error(
+                'Government accounts always use the restricted government seller role.',
+                422,
+                'government_role_fixed'
+            );
+        }
+
         if ($user->hasRole('admin') && $request->role !== 'admin') {
             $remainingAdmins = User::role('admin')
                 ->whereNotIn('id', [$user->id, $request->user()->id])

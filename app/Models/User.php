@@ -145,6 +145,12 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(GovProfile::class);
     }
 
+    /** Agreed per-account seller fees (government consignors only). */
+    public function sellerFeeProfile(): HasOne
+    {
+        return $this->hasOne(SellerFeeProfile::class);
+    }
+
     public function powerOfAttorneys(): HasMany
     {
         return $this->hasMany(PowerOfAttorney::class);
@@ -463,8 +469,27 @@ class User extends Authenticatable implements MustVerifyEmail
             return true;
         }
 
+        // Government consignors — a restricted seller (see isGovernment()).
+        if ($this->hasRole('government')) {
+            return true;
+        }
+
         // Business (and any other) accounts with explicit selling intent
         return in_array($this->account_intent, ['seller', 'buyer_and_seller'], true);
+    }
+
+    /**
+     * Government / charity / repo consignor account.
+     *
+     * These accounts are admin-created and act as a restricted seller: they
+     * manage only their own inventory, cannot bid, never put a vehicle into an
+     * auction themselves (admin assigns it), and settle on a per-account fee
+     * profile instead of the global seller fees. Like every seller they need
+     * an approved Power of Attorney before anything is listed.
+     */
+    public function isGovernment(): bool
+    {
+        return $this->account_type === 'government';
     }
 
     /**

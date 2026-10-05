@@ -81,7 +81,7 @@ it('created government user has a valid status enum value (regression: Data trun
         ], true))->toBeTrue();
 });
 
-it('admin create gov account assigns buyer role', function () {
+it('admin create gov account assigns the restricted government role, not buyer', function () {
     $admin = makeGovAdmin();
 
     $this->actingAs($admin, 'sanctum')
@@ -89,7 +89,11 @@ it('admin create gov account assigns buyer role', function () {
 
     $user = User::where('email', 'role@gov.test')->first();
     expect($user)->not->toBeNull()
-        ->and($user->hasRole('buyer'))->toBeTrue();
+        ->and($user->hasRole('government'))->toBeTrue()
+        ->and($user->hasRole('buyer'))->toBeFalse()
+        ->and($user->bidding_enabled)->toBeFalse()
+        ->and($user->hasPermissionTo('inventory.create'))->toBeTrue()
+        ->and($user->hasPermissionTo('auctions.bid'))->toBeFalse();
 });
 
 it('create gov account requires entity_name and email', function () {

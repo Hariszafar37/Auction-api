@@ -296,6 +296,17 @@ class AuctionService
         $seller = $vehicle->seller()->with('dealerProfile')->first();
         $isAdmin = $requestingUser && $requestingUser->hasRole('admin');
 
+        // Government consignors never list their own vehicles — an admin does it
+        // for them — so the admin bypass below would otherwise skip their POA
+        // entirely. The POA is needed for title/DMV processing, so it is checked
+        // here for every caller, admin included. Keyed on vehicle_id so the
+        // admin's Add Lot form shows it against the vehicle picker.
+        if ($seller && $seller->isGovernment() && ! $seller->hasApprovedPoa()) {
+            throw ValidationException::withMessages([
+                'vehicle_id' => ['This government seller needs an approved Power of Attorney before their vehicle can be listed.'],
+            ]);
+        }
+
         if (! $isAdmin) {
             // POA check: all seller-enabled accounts (individual, dealer, business) need an approved POA
             if ($seller && $seller->hasSellIntent()) {
@@ -420,6 +431,28 @@ class AuctionService
         }
 
         return $lot->fresh(['vehicle', 'auction']);
+    }
+
+    /**
+     * Seller-side reserve change. Follows the same freeze rule as updateLot():
+     * the reserve can only move while the lot is still pending — once bidding
+     * can begin it is locked. Null clears the reserve (sell to the highest bid).
+     */
+    public function updateReserve(AuctionLot $lot, ?int $reservePrice): AuctionLot
+    {
+        return DB::transaction(function () use ($lot, $reservePrice): AuctionLot {
+            $locked = AuctionLot::whereKey($lot->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== LotStatus::Pending) {
+                throw ValidationException::withMessages([
+                    'reserve_price' => ['The reserve can only be changed before the lot opens for bidding.'],
+                ]);
+            }
+
+            $locked->update(['reserve_price' => $reservePrice]);
+
+            return $locked->fresh(['vehicle', 'auction']);
+        });
     }
 
     public function removeLot(AuctionLot $lot): void

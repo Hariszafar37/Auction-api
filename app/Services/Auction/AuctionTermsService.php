@@ -37,15 +37,17 @@ class AuctionTermsService
 
     /**
      * A valid payment method is required to ENTER only for bidder-capable
-     * roles (buyers and dealers). Admin, staff, and sellers are exempt — a
-     * seller may need to watch their own auction without a card on file.
+     * roles (buyers and dealers). Admin, staff, sellers and government
+     * consignors are exempt — a seller may need to watch their own auction
+     * without a card on file.
      * (Placing a bid is still independently payment-gated via User::canBid().)
      */
     public function requiresPayment(User $user): bool
     {
         return ! $user->hasRole('admin')
             && ! $user->hasRole('staff')
-            && ! $user->hasRole('seller');
+            && ! $user->hasRole('seller')
+            && ! $user->hasRole('government');
     }
 
     /** Has the user accepted the CURRENT terms version for this auction? */

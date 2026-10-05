@@ -60,6 +60,7 @@ class RolePermissionSeeder extends Seeder
         $buyer  = Role::firstOrCreate(['name' => 'buyer',  'guard_name' => 'sanctum']);
         $dealer = Role::firstOrCreate(['name' => 'dealer', 'guard_name' => 'sanctum']);
         $seller = Role::firstOrCreate(['name' => 'seller', 'guard_name' => 'sanctum']);
+        $government = Role::firstOrCreate(['name' => 'government', 'guard_name' => 'sanctum']);
         $staff  = Role::firstOrCreate(['name' => 'staff',  'guard_name' => 'sanctum']);
         $admin  = Role::firstOrCreate(['name' => 'admin',  'guard_name' => 'sanctum']);
 
@@ -87,6 +88,19 @@ class RolePermissionSeeder extends Seeder
             'auctions.view',
             'auctions.bid',
             'auctions.create',
+            'inventory.view',
+            'inventory.create',
+            'inventory.manage',
+            'payments.view',
+        ]);
+
+        // Government consignor: a restricted seller. Manages only its own
+        // inventory and views its own results — no bidding, no auction
+        // creation. Also created by migration
+        // 2026_09_24_000001_create_government_role_and_convert_accounts, because
+        // deploys run migrations but not this seeder; keep the two in step.
+        $government->syncPermissions([
+            'auctions.view',
             'inventory.view',
             'inventory.create',
             'inventory.manage',

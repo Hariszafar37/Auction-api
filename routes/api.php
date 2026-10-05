@@ -286,9 +286,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/vehicles/{vehicle}/notify', [VehicleController::class, 'subscribe'])->name('vehicles.notify');
 
         // Dealer portal dashboard & lot tracking
-        Route::prefix('my/dealer')->name('my.dealer.')->middleware('role:dealer')->group(function () {
-            Route::get('/dashboard', [DealerDashboardController::class, 'dashboard'])->name('dashboard');
-            Route::get('/lots',      [DealerDashboardController::class, 'lots'])->name('lots');
+        Route::prefix('my/dealer')->name('my.dealer.')->group(function () {
+            Route::get('/dashboard', [DealerDashboardController::class, 'dashboard'])->name('dashboard')->middleware('role:dealer');
+            // Lot results (auction, status, sale price) for my own vehicles. Government
+            // consignors use it for their sales history — the query is scoped to the
+            // caller's vehicles, so no other seller's data is reachable.
+            Route::get('/lots',      [DealerDashboardController::class, 'lots'])->name('lots')->middleware('role:dealer|government');
         });
 
         // My lots — "If Sale" seller decision flow.
@@ -300,6 +303,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/{lot}/bids',              [SellerLotDecisionController::class, 'bids'])->name('bids');
             Route::post('/{lot}/if-sale/approve',  [SellerLotDecisionController::class, 'approve'])->name('if-sale.approve');
             Route::post('/{lot}/if-sale/reject',   [SellerLotDecisionController::class, 'reject'])->name('if-sale.reject');
+            // Government consignors control their reserve until the lot opens.
+            Route::patch('/{lot}/reserve',         [SellerLotDecisionController::class, 'updateReserve'])->name('reserve')->middleware('role:government');
         });
 
         // My compliance documents (any authenticated user)
@@ -322,6 +327,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/',                                  [DealerVehicleController::class, 'index'])->name('index');
             Route::post('/',                                 [DealerVehicleController::class, 'store'])->name('store');
             Route::get('/{vehicle}',                         [DealerVehicleController::class, 'show'])->name('show');
+            // Self-edit before listing — government consignors only (see DealerVehicleController::update).
+            Route::patch('/{vehicle}',                       [DealerVehicleController::class, 'update'])->name('update')->middleware('role:government');
             Route::post('/{vehicle}/submit-to-auction',      [DealerVehicleController::class, 'submitToAuction'])->name('submit-to-auction');
 
             // Dealer vehicle media management
@@ -483,6 +490,9 @@ Route::prefix('v1')->group(function () {
                 Route::post('/{user}/invite',    [AdminGovController::class, 'sendInvite'])->name('invite');
                 Route::post('/{user}/approve',   [AdminGovController::class, 'approve'])->name('approve');
                 Route::post('/{user}/reject',    [AdminGovController::class, 'reject'])->name('reject');
+                // Per-account seller fees (government consignors do not use the global seller fees)
+                Route::get('/{user}/fees',       [AdminGovController::class, 'feeProfile'])->name('fees.show')->middleware('permission:payments.view');
+                Route::put('/{user}/fees',       [AdminGovController::class, 'updateFeeProfile'])->name('fees.update')->middleware('permission:payments.manage');
             });
 
             // Post-auction purchases & pickup management
